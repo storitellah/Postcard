@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="Postcard Press by Storitellah — a local-first postcard design studio for photographers, artists, galleries and storytellers. Design print-ready postcards in your browser. No login, no uploads, no tracking.">
+<meta name="theme-color" content="#f4f1ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Postcard Press">
+<title>Postcard Press by Storitellah — Print-Ready Postcard Studio</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><div class="noscript">Postcard Press needs JavaScript to run. Everything stays on your device — nothing is ever uploaded.</div></noscript>
+
+<div id="app" class="app" aria-hidden="false">
+
+  <!-- ══════════ TOP TOOLBAR ══════════ -->
+  <header class="toolbar glass" role="banner">
+    <div class="toolbar-left">
+      <span class="brand" id="brandHome">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="7" width="26" height="18" rx="3" fill="var(--accent)"/><rect x="6" y="10" width="12" height="12" rx="1.5" fill="#fff" opacity=".92"/><rect x="21" y="10" width="5" height="5" rx="1" fill="#fff" opacity=".65"/><line x1="20" y1="19" x2="26" y2="19" stroke="#fff" stroke-width="1.4" opacity=".7" stroke-linecap="round"/><line x1="20" y1="21.5" x2="26" y2="21.5" stroke="#fff" stroke-width="1.4" opacity=".7" stroke-linecap="round"/></svg>
+        <span class="brand-text">Postcard&nbsp;Press <span class="brand-by">by <a href="https://storitellah.com" target="_blank" rel="noopener" class="brand-storitellah">Storitellah</a></span></span>
+      </span>
+    </div>
+
+    <div class="toolbar-center">
+      <div class="seg" role="group" aria-label="Undo and redo">
+        <button class="seg-btn icon-btn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg viewBox="0 0 20 20"><path d="M8 5 3 9.5 8 14M3.5 9.5H12a4.5 4.5 0 0 1 0 9h-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="seg-btn icon-btn" id="btnRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 20 20"><path d="m12 5 5 4.5-5 4.5M16.5 9.5H8a4.5 4.5 0 0 0 0 9h2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+
+      <div class="seg view-seg" role="tablist" aria-label="Preview mode">
+        <button class="seg-btn" role="tab" data-view="front" id="viewFront" aria-selected="true">Front</button>
+        <button class="seg-btn" role="tab" data-view="back" id="viewBack" aria-selected="false">Back</button>
+        <button class="seg-btn hide-sm" role="tab" data-view="both" id="viewBoth" aria-selected="false">Both</button>
+        <button class="seg-btn hide-sm" role="tab" data-view="sheet" id="viewSheet" aria-selected="false">Sheet</button>
+      </div>
+    </div>
+
+    <div class="toolbar-right">
+      <button class="icon-btn" id="btnGuides" title="Toggle guides (G)" aria-label="Toggle guides" aria-pressed="true"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="6" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 2"/></svg></button>
+      <button class="icon-btn" id="btnTheme" title="Toggle theme (T)" aria-label="Toggle light or dark theme"><svg class="theme-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6 16 16M16 4l-1.4 1.4M5.4 14.6 4 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg class="theme-moon" viewBox="0 0 20 20"><path d="M16.5 12.5A7 7 0 0 1 7.5 3.5a7 7 0 1 0 9 9Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+      <button class="icon-btn hide-sm" id="btnFullscreen" title="Fullscreen preview (F)" aria-label="Fullscreen preview"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="btn btn-ghost hide-sm" id="btnSupport">♥ Support</button>
+      <button class="btn btn-primary" id="btnExportOpen"><svg viewBox="0 0 20 20" class="btn-ico"><path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14v2a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16v-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Export</button>
+      <button class="icon-btn show-sm" id="btnMobilePanel" aria-label="Open settings panel"><svg viewBox="0 0 20 20"><path d="M3 6h14M3 10h14M3 14h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ══════════ WORKSPACE ══════════ -->
+  <div class="workspace">
+
+    <!-- LEFT: MEDIA BROWSER -->
+    <aside class="panel media-panel glass" id="mediaPanel" aria-label="Media browser">
+      <div class="panel-head">
+        <h2 class="panel-title">Photos</h2>
+        <button class="icon-btn sm" id="btnUploadSm" title="Add photos" aria-label="Add photos"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="media-scroll">
+        <button class="dropzone" id="dropzone" aria-label="Upload photos — click or drop images here">
+          <svg viewBox="0 0 40 40" class="dz-ico"><rect x="5" y="9" width="30" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="17" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m9 27 7-7 5 5 4-4 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="dz-title">Add photos</span>
+          <span class="dz-sub">Drop images here or tap to browse.<br>Everything stays on your device.</span>
+        </button>
+        <div class="media-list" id="mediaList" role="list" aria-label="Uploaded photos"></div>
+        <button class="btn btn-ghost w-full" id="btnDemo">✨ Load demo project</button>
+      </div>
+      <div class="support-box" aria-label="Support the creator">
+        <h3 class="support-title">Support the Creator</h3>
+        <a class="support-link" href="https://patreon.com/kiberastories" target="_blank" rel="noopener"><span class="support-ico">🧡</span> Patreon</a>
+        <a class="support-link" href="https://ko-fi.com/kiberastories" target="_blank" rel="noopener"><span class="support-ico">☕</span> Ko-fi</a>
+        <a class="support-link" href="mailto:brian@storitellah.com"><span class="support-ico">🐞</span> Report a bug</a>
+      </div>
+    </aside>
+
+    <!-- CENTER: LIVE PREVIEW -->
+    <main class="preview-area" id="previewArea" aria-label="Live preview">
+      <div class="preview-viewport" id="previewViewport">
+        <canvas id="previewCanvas" aria-label="Postcard preview canvas"></canvas>
+        <div class="preview-empty" id="emptyState">
+          <div class="empty-card glass">
+            <svg viewBox="0 0 64 48" class="empty-ico"><rect x="2" y="2" width="60" height="44" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="8" y="8" width="28" height="32" rx="2" fill="currentColor" opacity=".14"/><circle cx="18" cy="18" r="4" fill="currentColor" opacity=".3"/><path d="m10 36 9-10 7 8 5-5 5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/><rect x="47" y="8" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2" opacity=".6"/><path d="M41 26h15M41 31h15M41 36h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".4"/></svg>
+            <h1>Design beautiful, print-ready postcards</h1>
+            <p>Upload your photographs, design the front and back, and export gallery-quality JPG, PNG or print-ready PDF — entirely on your device. No account. No uploads. No tracking.</p>
+            <div class="empty-actions">
+              <button class="btn btn-primary btn-lg" id="btnEmptyUpload">Upload photos</button>
+              <button class="btn btn-ghost btn-lg" id="btnEmptyDemo">Try the demo project</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-hud glass" id="previewHud" role="toolbar" aria-label="Zoom controls">
+        <button class="icon-btn sm" id="btnZoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 20 20"><path d="M5 10h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="hud-zoom" id="zoomLevel" title="Reset zoom">100%</button>
+        <button class="icon-btn sm" id="btnZoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 20 20"><path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <span class="hud-sep" aria-hidden="true"></span>
+        <button class="hud-btn" id="btnZoomFit" title="Fit to screen (0)">Fit</button>
+        <button class="hud-btn" id="btnZoom100" title="Actual print size (1)">1:1</button>
+      </div>
+
+      <div class="side-tabs glass" role="tablist" aria-label="Card side">
+        <button class="side-tab active" id="tabFront" role="tab" aria-selected="true">Front</button>
+        <button class="side-tab" id="tabBack" role="tab" aria-selected="false">Back</button>
+      </div>
+      <div class="swipe-hint show-sm" id="swipeHint" aria-hidden="true">Swipe to flip · pinch to zoom</div>
+    </main>
+
+    <!-- RIGHT: INSPECTOR -->
+    <aside class="panel inspector glass" id="inspector" aria-label="Settings inspector">
+      <div class="insp-tabs" role="tablist" aria-label="Inspector sections">
+        <button class="insp-tab active" data-page="card" role="tab" aria-selected="true">Card</button>
+        <button class="insp-tab" data-page="front" role="tab" aria-selected="false">Front</button>
+        <button class="insp-tab" data-page="back" role="tab" aria-selected="false">Back</button>
+        <button class="insp-tab" data-page="export" role="tab" aria-selected="false">Export</button>
+      </div>
+      <button class="insp-close show-sm icon-btn" id="btnInspClose" aria-label="Close panel"><svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+
+      <div class="insp-scroll">
+
+        <!-- ── CARD PAGE ── -->
+        <section class="insp-page active" data-page="card">
+          <div class="field">
+            <label for="sizePreset">Postcard size</label>
+            <select id="sizePreset"></select>
+          </div>
+          <div class="field-row">
+            <div class="seg w-full" role="group" aria-label="Orientation">
+              <button class="seg-btn flex-1" id="orientLandscape" aria-pressed="true">Landscape</button>
+              <button class="seg-btn flex-1" id="orientPortrait" aria-pressed="false">Portrait</button>
+            </div>
+          </div>
+          <div class="field-row" id="customSizeRow">
+            <div class="field flex-1"><label for="customW">Width</label><input type="number" id="customW" min="1" step="0.1" inputmode="decimal"></div>
+            <div class="field flex-1"><label for="customH">Height</label><input type="number" id="customH" min="1" step="0.1" inputmode="decimal"></div>
+            <div class="field"><label for="unitSel">Unit</label>
+              <select id="unitSel"><option value="in">in</option><option value="mm">mm</option><option value="cm">cm</option></select>
+            </div>
+          </div>
+          <div class="hint" id="sizeInfo"></div>
+
+          <h3 class="insp-h">Print setup</h3>
+          <div class="field-check"><label><input type="checkbox" id="bleedOn" checked> Bleed <span class="hint-inline">(0.125 in / 3 mm)</span></label></div>
+          <div class="field-check"><label><input type="checkbox" id="marksOn" checked> Crop &amp; cut marks on export</label></div>
+          <div class="field-check"><label><input type="checkbox" id="safeOn" checked> Show safe margin guide</label></div>
+          <div class="hint">Output is rendered at 300 DPI for sharp, professional printing.</div>
+
+          <h3 class="insp-h">Project &amp; credits</h3>
+          <div class="field"><label for="gPhotographer">Photographer name</label><input type="text" id="gPhotographer" placeholder="Your Name"></div>
+          <div class="field"><label for="gProject">Project name</label><input type="text" id="gProject" placeholder="Project Name"></div>
+          <div class="field"><label for="gWebsite">Website</label><input type="text" id="gWebsite" placeholder="Your Website"></div>
+          <div class="field"><label for="gEmail">Email</label><input type="text" id="gEmail" placeholder="Your Email"></div>
+          <div class="field"><label for="gCopyright">Copyright line</label><input type="text" id="gCopyright" placeholder="© 2026 Your Name"></div>
+          <div class="field">
+            <label>Logo</label>
+            <div class="field-row">
+              <button class="btn btn-ghost flex-1" id="btnLogoUpload">Upload logo…</button>
+              <button class="btn btn-ghost" id="btnLogoClear" title="Remove logo">✕</button>
+            </div>
+            <div class="hint" id="logoInfo">No logo — a placeholder is used where enabled.</div>
+          </div>
+
+          <h3 class="insp-h">Card details <span class="hint-inline">(this card)</span></h3>
+          <div class="field"><label for="mTitle">Photo title</label><input type="text" id="mTitle" placeholder="Photo Title"></div>
+          <div class="field"><label for="mLocation">Location</label><input type="text" id="mLocation" placeholder="Your Location"></div>
+          <div class="field"><label for="mDate">Date</label><input type="text" id="mDate" placeholder="2026"></div>
+          <div class="field"><label for="mEdition">Edition</label><input type="text" id="mEdition" placeholder="Edition 1 of 50"></div>
+          <div class="field"><label for="mCamera">Camera</label><input type="text" id="mCamera" placeholder="Camera / film"></div>
+        </section>
+
+        <!-- ── FRONT PAGE ── -->
+        <section class="insp-page" data-page="front">
+          <h3 class="insp-h first">Layout preset</h3>
+          <div class="chip-grid" id="frontLayouts" role="group" aria-label="Front layout presets"></div>
+
+          <h3 class="insp-h">Border</h3>
+          <div class="field">
+            <label for="fBorderW">Border width <output id="fBorderWOut">0.25″</output></label>
+            <input type="range" id="fBorderW" min="0" max="1.25" step="0.01" value="0.25">
+          </div>
+          <div class="field">
+            <label for="fBorderBottom">Extra bottom border <output id="fBorderBottomOut">0″</output></label>
+            <input type="range" id="fBorderBottom" min="0" max="1.5" step="0.01" value="0">
+          </div>
+          <div class="field">
+            <label>Border colour</label>
+            <div class="swatch-row" id="fBorderSwatches">
+              <button class="swatch" data-color="#ffffff" style="background:#fff" title="White" aria-label="White border"></button>
+              <button class="swatch" data-color="#faf6ee" style="background:#faf6ee" title="Cream" aria-label="Cream border"></button>
+              <button class="swatch" data-color="#f2f2f0" style="background:#f2f2f0" title="Gallery grey" aria-label="Gallery grey border"></button>
+              <button class="swatch" data-color="#111111" style="background:#111" title="Black" aria-label="Black border"></button>
+              <input type="color" id="fBorderColor" value="#ffffff" title="Custom border colour" aria-label="Custom border colour">
+            </div>
+          </div>
+
+          <h3 class="insp-h">Photograph</h3>
+          <div class="seg w-full" role="group" aria-label="Photo fit">
+            <button class="seg-btn flex-1" id="fitFill" aria-pressed="true">Fill</button>
+            <button class="seg-btn flex-1" id="fitFit" aria-pressed="false">Fit</button>
+          </div>
+          <div class="hint">Fill crops to the frame (drag the preview to reposition). Fit shows the entire photo — never stretched, never distorted.</div>
+          <div class="field">
+            <label for="fZoom">Zoom <output id="fZoomOut">100%</output></label>
+            <input type="range" id="fZoom" min="1" max="3" step="0.01" value="1">
+          </div>
+          <div class="field-row">
+            <button class="btn btn-ghost flex-1" id="fRotL" title="Rotate left">⟲ 90°</button>
+            <button class="btn btn-ghost flex-1" id="fRotR" title="Rotate right">⟳ 90°</button>
+            <button class="btn btn-ghost flex-1" id="fReset">Reset</button>
+          </div>
+
+          <h3 class="insp-h">Text on front</h3>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fTitleOn"> Title</label><input type="text" id="fTitle" placeholder="Photo Title"></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fCaptionOn"> Caption</label><input type="text" id="fCaption" placeholder="A short caption for this photograph."></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fWebsiteOn"> Website</label></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fProjectOn"> Project title</label></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fCopyrightOn"> Copyright</label></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fLogoOn"> Logo</label></div>
+
+          <h3 class="insp-h">Photographer credit</h3>
+          <div class="field"><label for="creditPlace">Placement</label>
+            <select id="creditPlace">
+              <option value="bottom-left">Bottom left</option>
+              <option value="bottom-right">Bottom right</option>
+              <option value="center">Centre bottom</option>
+              <option value="back">On the back</option>
+              <option value="hidden">Hidden</option>
+            </select>
+          </div>
+          <div class="field"><label for="creditFormat">Format</label>
+            <select id="creditFormat">
+              <option value="photo">Photo: Your Name</option>
+              <option value="photograph">Photograph by Your Name</option>
+              <option value="copy">© Your Name</option>
+              <option value="studio">Your Name / Studio</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+          <div class="field" id="creditCustomRow" hidden><label for="creditCustom">Custom credit</label><input type="text" id="creditCustom" placeholder="Photo: Your Name"></div>
+
+          <button class="btn btn-ghost w-full" id="fApplyAll">Apply front design to all postcards</button>
+        </section>
+
+        <!-- ── BACK PAGE ── -->
+        <section class="insp-page" data-page="back">
+          <h3 class="insp-h first">Layout preset</h3>
+          <div class="chip-grid" id="backLayouts" role="group" aria-label="Back layout presets"></div>
+          <div class="hint">Tap an element in the preview to select it, then drag to move or use the corner handle to resize. Edit its text below.</div>
+
+          <div id="elEditor" class="el-editor" hidden>
+            <h3 class="insp-h">Selected element: <span id="elName">—</span></h3>
+            <div class="field" id="elTextRow"><label for="elText">Text</label><textarea id="elText" rows="3"></textarea></div>
+            <div class="field-row">
+              <div class="field flex-1"><label for="elSize">Size (pt)</label><input type="number" id="elSize" min="4" max="72" step="0.5"></div>
+              <div class="field flex-1"><label for="elFont">Font</label>
+                <select id="elFont"><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option></select>
+              </div>
+              <div class="field flex-1"><label for="elAlign">Align</label>
+                <select id="elAlign"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>
+              </div>
+            </div>
+            <div class="field-row">
+              <button class="btn btn-ghost flex-1" id="elHide">Hide element</button>
+              <button class="btn btn-ghost flex-1" id="elDeselect">Done</button>
+            </div>
+          </div>
+
+          <h3 class="insp-h">Back content <span class="hint-inline">(this card)</span></h3>
+          <div class="field"><label for="bCaption">Caption</label><input type="text" id="bCaption" placeholder="Photo Title"></div>
+          <div class="field"><label for="bStory">Story</label><textarea id="bStory" rows="3" placeholder="Tell the story behind this photograph…"></textarea></div>
+
+          <h3 class="insp-h">Elements</h3>
+          <div class="el-toggles" id="elToggles"></div>
+
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="bQrOn"> QR code</label><input type="text" id="bQrText" placeholder="https://your-website.com"></div>
+
+          <button class="btn btn-ghost w-full" id="bApplyAll">Apply back design to all postcards</button>
+        </section>
+
+        <!-- ── EXPORT PAGE ── -->
+        <section class="insp-page" data-page="export">
+          <h3 class="insp-h first">Format</h3>
+          <div class="seg w-full" role="group" aria-label="Export format">
+            <button class="seg-btn flex-1 active" data-expformat="jpg" aria-pressed="true">JPG</button>
+            <button class="seg-btn flex-1" data-expformat="png" aria-pressed="false">PNG</button>
+            <button class="seg-btn flex-1" data-expformat="pdf" aria-pressed="false">PDF</button>
+          </div>
+
+          <div class="field"><label for="expSides">Sides</label>
+            <select id="expSides"><option value="both">Front and back</option><option value="front">Front only</option><option value="back">Back only</option></select>
+          </div>
+          <div class="field"><label for="expScope">Postcards</label>
+            <select id="expScope"><option value="current">Current postcard</option><option value="all">All postcards</option></select>
+          </div>
+
+          <div id="pdfOptions">
+            <div class="field"><label for="pdfMode">PDF layout</label>
+              <select id="pdfMode">
+                <option value="cards">One postcard per page (print size)</option>
+                <option value="sheet-a4">Imposed on A4 sheets</option>
+                <option value="sheet-letter">Imposed on Letter sheets</option>
+                <option value="contact">Contact sheet</option>
+              </select>
+            </div>
+            <div class="field" id="duplexEdgeRow"><label for="expEdge">Duplex flip edge</label>
+              <select id="expEdge"><option value="long">Long-edge flip (most printers)</option><option value="short">Short-edge flip</option></select>
+            </div>
+          </div>
+
+          <div class="field-check"><label><input type="checkbox" id="expBleed" checked> Include bleed</label></div>
+          <div class="field-check"><label><input type="checkbox" id="expMarks" checked> Crop marks</label></div>
+
+          <h3 class="insp-h">File naming</h3>
+          <div class="field"><label for="namePattern">Pattern</label>
+            <select id="namePattern">
+              <option value="{name}-{side}">originalname-front.jpg</option>
+              <option value="{name}-postcard">originalname-postcard.pdf</option>
+              <option value="{project}-{index}">project-001.jpg</option>
+              <option value="custom">Custom pattern…</option>
+            </select>
+          </div>
+          <div class="field" id="customPatternRow" hidden>
+            <label for="customPattern">Custom pattern</label>
+            <input type="text" id="customPattern" placeholder="{project}-{index}-{side}">
+            <div class="hint">Tokens: {name} {project} {title} {index} {side} {date}</div>
+          </div>
+
+          <button class="btn btn-primary w-full btn-lg" id="btnExport">Export</button>
+          <div class="field-row">
+            <button class="btn btn-ghost flex-1" id="btnPrint">🖨 Print…</button>
+            <button class="btn btn-ghost flex-1" id="btnDuplexPreview">Duplex preview</button>
+          </div>
+
+          <h3 class="insp-h">Project</h3>
+          <div class="field"><label for="projectFileName">Project name (for files)</label><input type="text" id="projectFileName" placeholder="project"></div>
+          <div class="field-row">
+            <button class="btn btn-ghost flex-1" id="btnSaveProject">Save backup (JSON)</button>
+            <button class="btn btn-ghost flex-1" id="btnLoadProject">Restore…</button>
+          </div>
+          <h3 class="insp-h">Design presets</h3>
+          <div class="field-row">
+            <input type="text" id="presetName" placeholder="Preset name" class="flex-1" aria-label="Preset name">
+            <button class="btn btn-ghost" id="btnSavePreset">Save</button>
+          </div>
+          <div class="preset-list" id="presetList"></div>
+          <div class="hint">Presets store your card size, front and back design, and credits — locally in this browser.</div>
+        </section>
+      </div>
+    </aside>
+
+    <div class="panel-scrim" id="panelScrim" hidden></div>
+  </div>
+
+  <!-- ══════════ BOTTOM TIMELINE ══════════ -->
+  <footer class="timeline glass" id="timelineBar" aria-label="Postcard timeline">
+    <button class="tl-add" id="btnAddCard" title="Add postcards" aria-label="Add postcards"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <div class="tl-scroll" id="timeline" role="listbox" aria-label="Postcards"></div>
+    <div class="tl-count" id="tlCount" aria-live="polite"></div>
+  </footer>
+</div>
+
+<!-- ══════════ DIALOGS ══════════ -->
+<dialog id="dlgSupport" class="dlg glass-dlg" aria-labelledby="dlgSupportTitle">
+  <button class="dlg-close icon-btn" data-close aria-label="Close">✕</button>
+  <h2 id="dlgSupportTitle">Support the Creator</h2>
+  <p class="dlg-sub">Postcard Press is free, open and local-first — made with love by <a href="https://storitellah.com" target="_blank" rel="noopener">Storitellah</a>. If it helps your work, consider supporting future development.</p>
+  <div class="dlg-links">
+    <a class="btn btn-primary w-full" href="https://patreon.com/kiberastories" target="_blank" rel="noopener">🧡 Support on Patreon</a>
+    <a class="btn btn-ghost w-full" href="https://ko-fi.com/kiberastories" target="_blank" rel="noopener">☕ Buy a Ko-fi</a>
+    <a class="btn btn-ghost w-full" href="mailto:brian@storitellah.com">🐞 Report a bug — brian@storitellah.com</a>
+  </div>
+  <p class="dlg-fine">No login. No cloud. No tracking. Your photographs never leave this device.</p>
+</dialog>
+
+<dialog id="dlgDuplex" class="dlg dlg-wide glass-dlg" aria-labelledby="dlgDuplexTitle">
+  <button class="dlg-close icon-btn" data-close aria-label="Close">✕</button>
+  <h2 id="dlgDuplexTitle">Duplex printing preview</h2>
+  <p class="dlg-sub">Check how fronts and backs align when your printer flips the paper.</p>
+  <div class="duplex-controls">
+    <div class="seg" role="group" aria-label="Flip edge">
+      <button class="seg-btn active" id="dupLong" aria-pressed="true">Long-edge flip</button>
+      <button class="seg-btn" id="dupShort" aria-pressed="false">Short-edge flip</button>
+    </div>
+    <div class="seg" role="group" aria-label="Sheet size">
+      <button class="seg-btn active" id="dupA4" aria-pressed="true">A4</button>
+      <button class="seg-btn" id="dupLetter" aria-pressed="false">Letter</button>
+    </div>
+    <label class="field-check dup-check"><input type="checkbox" id="dupGuides" checked> Alignment guide</label>
+  </div>
+  <div class="duplex-pages" id="duplexPages"></div>
+  <div class="field-row dlg-actions">
+    <button class="btn btn-ghost flex-1" id="btnTestPrint">Print alignment test page</button>
+    <button class="btn btn-primary flex-1" id="btnDuplexPrint">Print duplex sheets…</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="progress-veil" id="progressVeil" hidden>
+  <div class="progress-card glass-dlg">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="progressText">Rendering at 300 DPI…</div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+<input type="file" id="logoInput" accept="image/*" hidden>
+<input type="file" id="projectInput" accept=".json,application/json" hidden>
+
+<script src="script.js"></script>
+</body>
+</html>
