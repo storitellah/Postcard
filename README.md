@@ -10,7 +10,7 @@ Design professional, print-ready photo postcards — front and back — entirely
 
 ### Design studio
 - **Front designer** — full-bleed photographs, gallery borders, editorial layouts, museum labels, wide bottom borders, minimal frames, or fully custom designs
-- **Back designer** — a real postcard back with caption, story, photographer credit, copyright, project, website, date, location, address lines, stamp placeholder, divider, optional QR code and logo — every element draggable and resizable
+- **Back designer** — a real postcard back with caption, story, photographer credit, copyright, project, website, date, location, address lines, stamp placeholder, divider, optional QR code, logo and free custom text blocks — every element draggable, resizable and recolourable
 - **Professional border engine** — equal borders on all four sides, adjustable width and colour, always outside the photograph; photos are never cropped or distorted by the border
 - **Aspect ratio preservation** — photos are never stretched, squashed or distorted; intelligent fit and fill with manual crop position, zoom, rotate and reset
 - **Photographer credits** — bottom left, bottom right, centre, on the back, or hidden, in standard formats (`Photo: Your Name`, `Photograph by Your Name`, `© Your Name`, `Your Name / Studio`, or custom)
@@ -80,7 +80,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) — the project is a plain static site, ready
 | `+` / `−` / `0` / `1` | Zoom in / out / fit / actual size |
 | `G` | Toggle guides |
 | `T` | Toggle theme |
-| `Delete` | Hide selected back element |
+| `↑` `↓` `←` `→` | Nudge selected back element (Shift = bigger steps) |
+| `Delete` | Hide / delete selected back element |
 
 ## 📁 Repository structure
 

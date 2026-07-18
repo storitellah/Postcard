@@ -785,7 +785,7 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
 
   const bottomZoneTop = py + ph;              /* top of bottom border area */
   const bottomZoneH = H - b - bottomZoneTop;  /* height inside trim */
-  const hasZone = bottomZoneH > 0.28 * ppi;
+  const hasZone = bottomZoneH > 0.2 * ppi;
   const zx = b + Math.max(bw, safe * 0.8);
   const zw = W - 2 * zx;
 
@@ -798,18 +798,24 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   if (f.show.copyright) smallBits.push(gv('copyright'));
   if (smallBits.length) pieces.push({ text: smallBits.join('   ·   '), size: 6, font: 'sans', color: softOnBorder });
 
+  /* measure the text stack, then use the bottom border zone only if it fits —
+     otherwise fall back to an overlay so text never spills past the trim */
+  let metrics = null, totalH = 0;
   if (pieces.length && hasZone) {
-    /* stack pieces vertically centred in the bottom border zone */
-    let totalH = 0;
-    const metrics = pieces.map(p => {
+    metrics = pieces.map(p => {
       const lh = p.size * 1.38 / 72 * ppi;
       ctx.font = fontStr(p.size / 72 * ppi, p.font, p.style, p.weight);
       const lines = wrapLines(ctx, p.text, zw);
-      const h = lines.length * lh + p.size * 0.22 / 72 * ppi;
+      const h = lines.length * lh + p.size * 0.12 / 72 * ppi;
       totalH += h;
       return { lh, h };
     });
-    let ty = bottomZoneTop + Math.max((bottomZoneH - totalH) / 2, 0.045 * ppi);
+  }
+  const zoneFits = metrics && totalH <= bottomZoneH - 0.03 * ppi;
+
+  if (pieces.length && zoneFits) {
+    /* stack pieces vertically centred in the bottom border zone */
+    let ty = bottomZoneTop + Math.max((bottomZoneH - totalH) / 2, 0.02 * ppi);
     pieces.forEach((p, i) => {
       ctx.fillStyle = p.color;
       ctx.font = fontStr(p.size / 72 * ppi, p.font, p.style, p.weight);
@@ -853,12 +859,15 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
     else if (f.creditPlace === 'center') { cx2 = W / 2; align = 'center'; }
     else { cx2 = W - b - Math.max(bw, safe); align = 'right'; }
     ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
-    const onPhoto = !hasZone || pieces.length === 0 && !hasZone;
-    if (hasZone && !pieces.length) {
+    /* border is free for the credit when no text stack was drawn into it,
+       or when the stack still leaves room below itself */
+    const zoneEmpty = hasZone && (!pieces.length || !zoneFits);
+    const zoneRoomBelow = hasZone && zoneFits && bottomZoneH - totalH >= 0.14 * ppi;
+    if (zoneEmpty) {
       /* alone in the bottom border */
       ctx.fillStyle = dark ? '#6a6a66' : 'rgba(244,244,242,0.8)';
       ctx.fillText(text, cx2, H - b - Math.max((bottomZoneH - sizePx) / 2, 0.05 * ppi));
-    } else if (hasZone) {
+    } else if (zoneRoomBelow) {
       ctx.fillStyle = dark ? '#8a8a86' : 'rgba(244,244,242,0.7)';
       ctx.fillText(text, cx2, H - b - 0.055 * ppi);
     } else {
@@ -2258,6 +2267,8 @@ function syncElEditor() {
   $('#elSize').value = selectedEl.size;
   $('#elFont').value = selectedEl.font;
   $('#elAlign').value = selectedEl.align;
+  $('#elColor').value = /^#[0-9a-f]{6}$/i.test(selectedEl.color) ? selectedEl.color : '#2a2a2a';
+  $('#elHide').textContent = (selectedEl.type === 'text' && !selectedEl.bind) ? 'Delete element' : 'Hide element';
 }
 
 function syncExportInputs() {
@@ -2534,11 +2545,27 @@ function bindBackInputs() {
   $('#elSize').addEventListener('change', commit);
   $('#elFont').addEventListener('change', (e) => { if (selectedEl) { selectedEl.font = e.target.value; commit(); requestRender(); } });
   $('#elAlign').addEventListener('change', (e) => { if (selectedEl) { selectedEl.align = e.target.value; commit(); requestRender(); } });
+  $('#elColor').addEventListener('input', (e) => { if (selectedEl) { selectedEl.color = e.target.value; requestRender(); } });
+  $('#elColor').addEventListener('change', commit);
   $('#elHide').addEventListener('click', () => {
     if (!selectedEl) return;
-    selectedEl.visible = false;
+    const card = currentCard();
+    if (selectedEl.type === 'text' && !selectedEl.bind && card) {
+      /* custom text elements are simply removed */
+      card.back.elements = card.back.elements.filter(el => el !== selectedEl);
+    } else {
+      selectedEl.visible = false;
+    }
     selectedEl = null;
     commit(); syncBackInputs(); syncElEditor(); requestRender();
+  });
+  $('#bAddText').addEventListener('click', () => {
+    const card = currentCard(); if (!card) return;
+    const el = backElement('text', { x: 0.3, y: 0.44, w: 0.4, h: 0.12, text: 'Your text', size: 9, align: 'center' });
+    card.back.elements.push(el);
+    selectedEl = el;
+    commit(); syncElEditor(); requestRender();
+    setSide('back');
   });
   $('#elDeselect').addEventListener('click', () => { selectedEl = null; syncElEditor(); requestRender(); });
 
@@ -2810,6 +2837,7 @@ function bindChrome() {
   }
 
   /* keyboard shortcuts */
+  const nudgeCommit = debounce(commit, 500);
   window.addEventListener('keydown', (e) => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -2825,6 +2853,18 @@ function bindChrome() {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); runPrint(); return; }
     if (typing) return;
+    /* arrow keys nudge the selected back element */
+    if (selectedEl && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const step = e.shiftKey ? 0.02 : 0.004;
+      if (e.key === 'ArrowLeft') selectedEl.x = clamp(selectedEl.x - step, -0.05, 0.98);
+      if (e.key === 'ArrowRight') selectedEl.x = clamp(selectedEl.x + step, -0.05, 0.98);
+      if (e.key === 'ArrowUp') selectedEl.y = clamp(selectedEl.y - step, -0.05, 0.98);
+      if (e.key === 'ArrowDown') selectedEl.y = clamp(selectedEl.y + step, -0.05, 0.98);
+      nudgeCommit();
+      view.needsRender = true;
+      return;
+    }
     switch (e.key) {
       case '1': zoomActual(); break;
       case '0': zoomFit(); break;
@@ -2837,7 +2877,7 @@ function bindChrome() {
       case 'ArrowLeft': if (state.cards.length) selectCard(state.sel - 1); break;
       case 'ArrowRight': if (state.cards.length) selectCard(state.sel + 1); break;
       case 'Delete': case 'Backspace':
-        if (selectedEl) { selectedEl.visible = false; selectedEl = null; commit(); syncBackInputs(); syncElEditor(); requestRender(); }
+        if (selectedEl) $('#elHide').click();
         break;
       case 'Escape':
         if (selectedEl) { selectedEl = null; syncElEditor(); requestRender(); }

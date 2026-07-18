@@ -2,9 +2,9 @@
 
 Postcard Press is verified two ways: an automated headless-browser suite run against the real app, and a manual checklist.
 
-## Automated test report — v1.0.0
+## Automated test report — v1.1.0
 
-Run: 2026-07-12 · Chromium (Playwright, headless) · viewports 1440×900 and 390×844
+Run: 2026-07-18 · Chromium (Playwright, headless) · viewports 1440×900 and 390×844
 
 | # | Check | Result | Notes |
 | --- | --- | --- | --- |
@@ -32,9 +32,13 @@ Run: 2026-07-12 · Chromium (Playwright, headless) · viewports 1440×900 and 39
 | 22 | Dark theme toggles | ✅ PASS | |
 | 23 | Duplex preview renders front + mirrored back sheets | ✅ PASS | |
 | 24 | Mobile layout (inspector becomes bottom sheet) | ✅ PASS | 390×844 |
-| 25 | **No console errors across the whole run** | ✅ PASS | |
+| 25 | Custom text element added & selected (v1.1) | ✅ PASS | editor opens, delete label |
+| 26 | Element colour control (v1.1) | ✅ PASS | |
+| 27 | Arrow-key nudge of selected element (v1.1) | ✅ PASS | x 0.300 → 0.304 |
+| 28 | Custom text element deleted (v1.1) | ✅ PASS | |
+| 29 | **No console errors across the whole run** | ✅ PASS | |
 
-**25 / 25 passed.** The suite drives the real UI (clicks, tabs, theme toggle) and calls the export engine directly through `window.PostcardPress` test hooks; the sample files in [`samples/`](samples/) are the untouched output of this run.
+**29 / 29 passed.** The suite drives the real UI (clicks, tabs, theme toggle) and calls the export engine directly through `window.PostcardPress` test hooks; the sample files in [`samples/`](samples/) are the untouched output of this run.
 
 ## Sample exports (produced by the suite)
 

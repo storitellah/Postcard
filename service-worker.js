@@ -1,6 +1,6 @@
 /* Postcard Press — offline-first service worker.
    Cache-first for the app shell; the app itself never talks to a network. */
-const CACHE = 'postcard-press-v1.0.0';
+const CACHE = 'postcard-press-v1.1.0';
 const SHELL = [
   './',
   './index.html',

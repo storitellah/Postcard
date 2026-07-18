@@ -2,6 +2,21 @@
 
 All notable changes to Postcard Press.
 
+## [1.1.0] — 2026-07-18
+
+### Added
+- **Custom text elements** on the back — add any number of free text blocks, drag/resize them, and delete them again
+- **Colour control** for the selected back element
+- **Arrow-key nudging** for the selected back element (Shift for bigger steps)
+
+### Improved
+- Front text placement now measures the title/caption stack and uses the bottom border whenever it truly fits (down to 0.2 in), falling back to the photo overlay only when it doesn't — text can no longer spill past the trim
+- Photographer credit avoids colliding with the text stack in narrow borders
+- `Delete`/`Backspace` matches the editor: hides bound elements, removes custom text
+
+### Fixed
+- Service worker cache bumped to v1.1.0 so offline users receive the update
+
 ## [1.0.0] — 2026-07-12
 
 Initial release. 🎉

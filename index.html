@@ -266,7 +266,9 @@
               <div class="field flex-1"><label for="elAlign">Align</label>
                 <select id="elAlign"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>
               </div>
+              <div class="field"><label for="elColor">Colour</label><input type="color" id="elColor" value="#2a2a2a"></div>
             </div>
+            <div class="hint">Tip: nudge the selected element with the arrow keys (hold Shift for bigger steps).</div>
             <div class="field-row">
               <button class="btn btn-ghost flex-1" id="elHide">Hide element</button>
               <button class="btn btn-ghost flex-1" id="elDeselect">Done</button>
@@ -279,6 +281,7 @@
 
           <h3 class="insp-h">Elements</h3>
           <div class="el-toggles" id="elToggles"></div>
+          <button class="btn btn-ghost w-full" id="bAddText">＋ Add custom text</button>
 
           <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="bQrOn"> QR code</label><input type="text" id="bQrText" placeholder="https://your-website.com"></div>
 
