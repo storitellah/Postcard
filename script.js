@@ -337,22 +337,51 @@ const QR = (() => {
   return { encode };
 })();
 
-/* draw a QR matrix (or a placeholder) into a canvas rect */
-function drawQr(ctx, text, x, y, w, fg = '#1a1a1a') {
-  const matrix = text && text.trim() ? QR.encode(text.trim()) : null;
-  ctx.save();
-  if (matrix) {
-    const n = matrix.length;
-    const quiet = w * 0.06;
-    const cell = (w - quiet * 2) / n;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x, y, w, w);
-    ctx.fillStyle = fg;
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      if (matrix[r][c]) ctx.fillRect(x + quiet + c * cell, y + quiet + r * cell, cell + 0.4, cell + 0.4);
+/* Build a QR module matrix synchronously. Prefers the vendored node-qrcode
+   (all versions, EC levels) and falls back to the built-in encoder. Returns
+   { size, get(row,col) } or null if the text is empty / can't be encoded. */
+function qrMatrix(text) {
+  const content = (text || '').trim();
+  if (!content) return null;
+  try {
+    if (typeof QRCode !== 'undefined' && QRCode.create) {
+      const qr = QRCode.create(content, { errorCorrectionLevel: 'M' });
+      return { size: qr.modules.size, get: (r, c) => qr.modules.get(r, c) };
     }
+  } catch (e) { /* too long for the requested EC level → fall through */ }
+  try {
+    const m = QR.encode(content);
+    if (m) return { size: m.length, get: (r, c) => m[r][c] };
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+/* Render a QR code into a canvas rect. It is rasterised on a high-resolution
+   offscreen canvas (≥400px, integer module size) first, then composited, so
+   it never pixelates on the 300 DPI print canvas. */
+function drawQr(ctx, text, x, y, w, opts = {}) {
+  const dark = opts.dark || '#1a1a1a';
+  const light = opts.light || '#ffffff';
+  const qr = qrMatrix(text);
+  ctx.save();
+  if (qr) {
+    const quiet = 4;                       /* modules of quiet zone (QR spec) */
+    const total = qr.size + quiet * 2;
+    const need = Math.max(400, Math.ceil(w));
+    const cell = Math.max(3, Math.ceil(need / total));
+    const dim = cell * total;
+    const oc = drawQr._c || (drawQr._c = document.createElement('canvas'));
+    oc.width = dim; oc.height = dim;
+    const oq = oc.getContext('2d');
+    oq.fillStyle = light; oq.fillRect(0, 0, dim, dim);
+    oq.fillStyle = dark;
+    for (let r = 0; r < qr.size; r++) for (let c = 0; c < qr.size; c++) {
+      if (qr.get(r, c)) oq.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+    }
+    ctx.imageSmoothingEnabled = (dim / w) > 1.6;   /* smooth big downscales, keep print edges crisp */
+    ctx.drawImage(oc, x, y, w, w);
   } else {
-    ctx.strokeStyle = fg; ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = dark; ctx.globalAlpha = 0.5;
     ctx.lineWidth = Math.max(1, w * 0.02);
     ctx.setLineDash([w * 0.06, w * 0.04]);
     ctx.strokeRect(x, y, w, w);
@@ -360,7 +389,7 @@ function drawQr(ctx, text, x, y, w, fg = '#1a1a1a') {
     ctx.globalAlpha = 0.65;
     ctx.font = `${w * 0.16}px ${FONTS.sans}`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = fg;
+    ctx.fillStyle = dark;
     ctx.fillText('QR', x + w / 2, y + w / 2);
   }
   ctx.restore();
@@ -389,6 +418,9 @@ function readFileAsDataURL(file) {
 /* Downscale very large photos to a sane maximum (keeps exports sharp
    at 300 DPI while protecting memory on phones). */
 async function importPhotoFile(file) {
+  /* EXIF must be read from the ORIGINAL file: downscaling re-encodes via
+     canvas, which strips all metadata. */
+  const exif = await extractExif(file);
   const raw = await readFileAsDataURL(file);
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = raw; });
@@ -404,7 +436,9 @@ async function importPhotoFile(file) {
     cx.drawImage(img, 0, 0, c.width, c.height);
     dataURL = c.toDataURL('image/jpeg', 0.94);
   }
-  return addImageFromDataURL(dataURL, file.name);
+  const id = await addImageFromDataURL(dataURL, file.name);
+  if (exif) imageStore.get(id).exif = exif;   /* handed to the card in handleFiles */
+  return id;
 }
 
 /* ── default structures ── */
@@ -514,6 +548,7 @@ function makeCard(imageId, name) {
     imageId: imageId || null,
     name: sanitizeName(name),
     meta: { title: '', caption: '', story: '', location: '', date: '', edition: '', camera: '' },
+    exif: null,
     front: defaultFront(),
     back: defaultBack(),
   };
@@ -726,6 +761,104 @@ const BIND_PLACEHOLDER = {
   date: '2026', location: 'Your Location', meta: 'Your Location · 2026', title: 'Photo Title',
 };
 
+/* ═══════════════════════ EXIF metadata ═══════════════════════
+   Parsed client-side via the vendored exifr (lite) build. Nothing is
+   uploaded — the file is read in-browser and only these tags are kept. */
+const EXIF_TAGS = ['Make', 'Model', 'LensModel', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'ISOSpeedRatings', 'DateTimeOriginal'];
+
+function fmtShutter(t) {
+  if (!(t > 0)) return '';
+  if (t >= 1) return `${Math.round(t * 10) / 10}s`;
+  return `1/${Math.round(1 / t)}s`;
+}
+function fmtCamera(make, model) {
+  make = (make || '').trim(); model = (model || '').trim();
+  if (!model) return make;
+  /* camera Model often already includes the Make — avoid "Canon Canon EOS" */
+  if (make && model.toLowerCase().startsWith(make.toLowerCase())) return model;
+  return make ? `${make} ${model}` : model;
+}
+function fmtExifDate(d) {
+  if (!d) return '';
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt)) return '';
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function buildSettings(e) {
+  const bits = [];
+  if (e.focalLength) bits.push(`${Math.round(e.focalLength)}mm`);
+  if (e.fNumber) bits.push(`ƒ/${Math.round(e.fNumber * 10) / 10}`);
+  if (e.shutter) bits.push(e.shutter);
+  if (e.iso) bits.push(`ISO ${e.iso}`);
+  return bits.join(' · ');
+}
+
+/* Read EXIF from a File; resolves to a normalized object (or null). */
+async function extractExif(file) {
+  try {
+    if (typeof exifr === 'undefined' || !exifr.parse) return null;
+    /* The lite build only parses TIFF/EXIF/GPS (no IPTC/XMP/ICC), so a plain
+       parse is already fast; the pick/translateValues options are avoided
+       because they throw in this build. */
+    const raw = await exifr.parse(file);
+    if (!raw) return null;
+    const e = {
+      make: raw.Make || '', model: raw.Model || '',
+      lens: raw.LensModel || '',
+      focalLength: raw.FocalLength || null,
+      fNumber: raw.FNumber || null,
+      shutter: fmtShutter(raw.ExposureTime),
+      iso: raw.ISO || raw.ISOSpeedRatings || null,
+      date: fmtExifDate(raw.DateTimeOriginal),
+    };
+    e.camera = fmtCamera(e.make, e.model);
+    e.settings = buildSettings(e);
+    /* keep only if something meaningful was found */
+    if (!e.camera && !e.lens && !e.settings && !e.date) return null;
+    return e;
+  } catch (err) {
+    console.warn('EXIF parse skipped:', err);
+    return null;
+  }
+}
+
+/* Seed a new card's editable fields from EXIF (without clobbering user text). */
+function applyExifToCard(card, exif) {
+  if (!exif) return;
+  card.exif = exif;
+  if (!card.meta.camera && exif.camera) card.meta.camera = exif.camera;
+  if (!card.meta.date && exif.date) card.meta.date = exif.date;
+}
+
+/* ═══════════════════════ Text tokens ═══════════════════════
+   {camera} {lens} {settings} {date} {title} {photographer} may appear in
+   any text field and are resolved live from the card's metadata/EXIF. */
+const TOKENS = [
+  { key: 'title', label: 'Title' },
+  { key: 'photographer', label: 'Photographer' },
+  { key: 'camera', label: 'Camera' },
+  { key: 'lens', label: 'Lens' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'date', label: 'Date' },
+];
+function tokenValue(card, key) {
+  const e = card.exif || {};
+  const m = card.meta;
+  switch (key) {
+    case 'camera':       return (m.camera && m.camera.trim()) || e.camera || '';
+    case 'lens':         return e.lens || '';
+    case 'settings':     return e.settings || '';
+    case 'date':         return (m.date && m.date.trim()) || e.date || '';
+    case 'title':        return (m.title && m.title.trim()) || '';
+    case 'photographer': return gv('photographer');
+  }
+  return '';
+}
+function applyTokens(text, card) {
+  if (!text || !card || text.indexOf('{') < 0) return text;
+  return text.replace(/\{(camera|lens|settings|date|title|photographer)\}/g, (_, k) => tokenValue(card, k));
+}
+
 /* ═══════════════════════ Front renderer ═══════════════════════ */
 function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const { w: tw, h: th } = trimSize();
@@ -791,8 +924,8 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
 
   const pieces = [];
   if (f.show.project) pieces.push({ text: gv('project').toUpperCase(), size: 6.5, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.12 });
-  if (f.show.title && (m.title.trim() || !opts.export)) pieces.push({ text: m.title.trim() || 'Photo Title', size: f.layout === 'wide-bottom' || f.layout === 'museum' ? 12 : 10.5, font: 'serif', weight: 'bold', color: inkOnBorder });
-  if (f.show.caption && (m.caption.trim() || !opts.export)) pieces.push({ text: m.caption.trim() || 'A short caption for this photograph.', size: 7.5, font: 'serif', style: 'italic', color: dark ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
+  if (f.show.title && (m.title.trim() || !opts.export)) pieces.push({ text: applyTokens(m.title.trim(), card) || 'Photo Title', size: f.layout === 'wide-bottom' || f.layout === 'museum' ? 12 : 10.5, font: 'serif', weight: 'bold', color: inkOnBorder });
+  if (f.show.caption && (m.caption.trim() || !opts.export)) pieces.push({ text: applyTokens(m.caption.trim(), card) || 'A short caption for this photograph.', size: 7.5, font: 'serif', style: 'italic', color: dark ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
   const smallBits = [];
   if (f.show.website) smallBits.push(gv('website'));
   if (f.show.copyright) smallBits.push(gv('copyright'));
@@ -995,7 +1128,8 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
       break;
     }
     case 'qr': {
-      drawQr(ctx, card.back.qrText || state.global.website, r.x, r.y, Math.min(r.w, r.h), '#2a2a2a');
+      const t = card.back.qrText || state.global.website;
+      drawQr(ctx, t, r.x, r.y, Math.min(r.w, r.h), { dark: el.qrDark || '#1a1a1a', light: el.qrLight || '#ffffff' });
       break;
     }
     case 'logo': {
@@ -1015,7 +1149,7 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
       break;
     }
     default: { /* text */
-      let text = el.bind ? bindText(card, el.bind) : el.text;
+      let text = el.bind ? bindText(card, el.bind) : applyTokens(el.text, card);
       let ghost = false;
       if (!text && !opts.export && el.bind && BIND_PLACEHOLDER[el.bind]) {
         text = BIND_PLACEHOLDER[el.bind]; ghost = true;
@@ -2134,6 +2268,8 @@ async function handleFiles(fileList) {
       $('#progressText').textContent = `Importing ${i + 1} of ${files.length}…`;
       const id = await importPhotoFile(files[i]);
       const card = makeCard(id, files[i].name);
+      const im = imageStore.get(id);
+      if (im && im.exif) applyExifToCard(card, im.exif);
       if (template) {
         card.front = deepClone(template.front);
         card.front.tx = { x: 0, y: 0, zoom: 1, rot: 0 };
@@ -2226,7 +2362,26 @@ function syncBackInputs() {
   $('#bStory').value = card ? card.meta.story : '';
   $('#bQrOn').checked = b.qrOn;
   $('#bQrText').value = b.qrText;
+  $('#qrControls').hidden = !b.qrOn;
+  const qe = qrElement(card);
+  if (qe) {
+    $('#qrSize').value = qe.w;
+    $('#qrSizeOut').textContent = Math.round(qe.w * 100) + '%';
+    $('#qrDark').value = qe.qrDark || '#1a1a1a';
+    $('#qrLight').value = qe.qrLight || '#ffffff';
+    const preset = qrPresetOf(qe);
+    $('#qrPos').value = preset;
+  }
   renderElToggles();
+}
+
+/* which position preset (if any) the QR element currently matches */
+const QR_PRESETS = { br: { x: 0.86, y: 0.66 }, bl: { x: 0.03, y: 0.66 }, tr: { x: 0.86, y: 0.06 }, tl: { x: 0.03, y: 0.06 } };
+function qrPresetOf(el) {
+  for (const [k, p] of Object.entries(QR_PRESETS)) {
+    if (Math.abs(el.x - p.x) < 0.005 && Math.abs(el.y - p.y) < 0.005) return k;
+  }
+  return '';
 }
 
 function renderElToggles() {
@@ -2263,12 +2418,38 @@ function syncElEditor() {
   $('#elTextRow').hidden = !isText;
   if (isText) {
     $('#elText').value = selectedEl.bind ? bindText(currentCard(), selectedEl.bind) : selectedEl.text;
+    buildTokenBar();
   }
   $('#elSize').value = selectedEl.size;
   $('#elFont').value = selectedEl.font;
   $('#elAlign').value = selectedEl.align;
   $('#elColor').value = /^#[0-9a-f]{6}$/i.test(selectedEl.color) ? selectedEl.color : '#2a2a2a';
   $('#elHide').textContent = (selectedEl.type === 'text' && !selectedEl.bind) ? 'Delete element' : 'Hide element';
+}
+
+/* quick-insert token chips in the Text Inspector */
+function buildTokenBar() {
+  const bar = $('#elTokens');
+  if (bar.childElementCount) return;   /* build once, reused across selections */
+  const label = document.createElement('span');
+  label.className = 'token-label'; label.textContent = 'Insert';
+  bar.appendChild(label);
+  for (const t of TOKENS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'token-chip'; b.textContent = t.label;
+    b.title = `Insert {${t.key}}`;
+    b.addEventListener('click', () => insertToken(`{${t.key}}`));
+    bar.appendChild(b);
+  }
+}
+function insertToken(tok) {
+  const ta = $('#elText');
+  const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? ta.value.length;
+  ta.value = ta.value.slice(0, s) + tok + ta.value.slice(e);
+  const pos = s + tok.length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function syncExportInputs() {
@@ -2500,12 +2681,14 @@ function bindBackInputs() {
   $('#bQrOn').addEventListener('change', (e) => {
     const card = currentCard(); if (!card) return;
     card.back.qrOn = e.target.checked;
-    if (card.back.qrOn) ensureQrElement(card);
-    else {
+    if (card.back.qrOn) {
+      ensureQrElement(card);
+      if (!card.back.qrText) card.back.qrText = state.global.website || '';
+    } else {
       card.back.elements = card.back.elements.filter(el => el.type !== 'qr');
       if (selectedEl && selectedEl.type === 'qr') { selectedEl = null; syncElEditor(); }
     }
-    commit(); requestRender();
+    commit(); syncBackInputs(); requestRender();
     if (card.back.qrOn) setSide('back');
   });
   $('#bQrText').addEventListener('input', debounce((e) => {
@@ -2513,6 +2696,21 @@ function bindBackInputs() {
     card.back.qrText = e.target.value;
     commit(); requestRender();
   }, 400));
+  $('#qrSize').addEventListener('input', (e) => {
+    const qe = qrElement(currentCard()); if (!qe || syncing) return;
+    qe.w = parseFloat(e.target.value); qe.h = qe.w;
+    $('#qrSizeOut').textContent = Math.round(qe.w * 100) + '%';
+    requestRender();
+  });
+  $('#qrSize').addEventListener('change', commit);
+  $('#qrDark').addEventListener('input', (e) => { const qe = qrElement(currentCard()); if (qe) { qe.qrDark = e.target.value; requestRender(); } });
+  $('#qrDark').addEventListener('change', commit);
+  $('#qrLight').addEventListener('input', (e) => { const qe = qrElement(currentCard()); if (qe) { qe.qrLight = e.target.value; requestRender(); } });
+  $('#qrLight').addEventListener('change', commit);
+  $('#qrPos').addEventListener('change', (e) => {
+    const qe = qrElement(currentCard()); const p = QR_PRESETS[e.target.value];
+    if (qe && p) { qe.x = p.x; qe.y = p.y; commit(); requestRender(); }
+  });
 
   /* selected element editor */
   $('#elText').addEventListener('input', debounce((e) => {
@@ -2583,9 +2781,10 @@ function bindBackInputs() {
 
 function ensureQrElement(card) {
   if (!card.back.elements.some(e => e.type === 'qr')) {
-    card.back.elements.push(backElement('qr', { x: 0.86, y: 0.66, w: 0.11, h: 0.26 }));
+    card.back.elements.push(backElement('qr', { x: 0.86, y: 0.66, w: 0.11, h: 0.11, qrDark: '#1a1a1a', qrLight: '#ffffff' }));
   }
 }
+function qrElement(card) { return card ? card.back.elements.find(e => e.type === 'qr') : null; }
 
 function bindExportInputs() {
   $$('[data-expformat]').forEach(b => b.addEventListener('click', () => {
@@ -2958,4 +3157,5 @@ window.PostcardPress = {
   buildCardsPdf, buildSheetPdf, buildContactPdf, canvasToBytes, makeZip, QR,
   serializeProject, loadProjectData, handleFiles, selectCard, setSide, setView,
   requestRender, zoomFit,
+  extractExif, applyExifToCard, applyTokens, tokenValue, qrMatrix, drawQr, currentCard,
 };

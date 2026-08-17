@@ -2,6 +2,17 @@
 
 All notable changes to Postcard Press.
 
+## [1.2.0] — 2026-08-17
+
+### Added
+- **Client-side EXIF metadata parser** (vendored [exifr](https://github.com/MikeKovarik/exifr), self-hosted) — on upload, each photo's `Make`, `Model`, `LensModel`, `FocalLength`, `FNumber`, `ExposureTime` (as `1/500s`), `ISO` and `DateTimeOriginal` are read locally and stored on the card; `meta.camera` and `meta.date` are seeded automatically. EXIF is read from the original file *before* downscaling, and never leaves the device.
+- **Smart text tokens** — `{camera}` `{lens}` `{settings}` `{date}` `{title}` `{photographer}` can be used in any front or back text field and resolve live; `{settings}` renders e.g. `35mm · ƒ/1.4 · 1/500s · ISO 200`. Quick-insert chips added to the Text Inspector.
+- **Vector-grade dynamic QR codes** (vendored [node-qrcode](https://github.com/soldair/node-qrcode), bundled to a self-contained IIFE) — the back QR element gains a size slider, dark/light colour pickers and position presets (bottom-left/right, top-right stamp area, custom drag). Codes are rasterised on a ≥400px offscreen canvas at error-correction M before compositing, so they never pixelate at 300 DPI, and long URLs that exceeded the old built-in encoder now encode cleanly.
+
+### Notes
+- Both libraries are committed under `vendor/` and cached by the service worker — no CDN, still fully offline, zero third-party network requests. The app degrades gracefully if either is absent (EXIF skipped; QR falls back to the built-in encoder).
+- Service worker cache bumped to v1.2.0.
+
 ## [1.1.0] — 2026-07-18
 
 ### Added

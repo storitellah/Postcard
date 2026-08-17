@@ -14,6 +14,8 @@ Design professional, print-ready photo postcards — front and back — entirely
 - **Professional border engine** — equal borders on all four sides, adjustable width and colour, always outside the photograph; photos are never cropped or distorted by the border
 - **Aspect ratio preservation** — photos are never stretched, squashed or distorted; intelligent fit and fill with manual crop position, zoom, rotate and reset
 - **Photographer credits** — bottom left, bottom right, centre, on the back, or hidden, in standard formats (`Photo: Your Name`, `Photograph by Your Name`, `© Your Name`, `Your Name / Studio`, or custom)
+- **EXIF metadata & smart tokens** — camera, lens, focal length, aperture, shutter, ISO and capture date are read from each photo *on your device* and can be dropped into any text with the `{camera}` `{lens}` `{settings}` `{date}` `{title}` `{photographer}` tokens (with quick-insert chips in the Text Inspector)
+- **Dynamic QR codes** — a toggleable back-of-card QR element (powered by node-qrcode, error-correction M) with URL/target text, size slider, dark/light colour pickers and position presets, rasterised at high resolution so it stays crisp in print
 
 ### Print-ready output
 - **Sizes** — 4×6 in, 5×7 in, A6, 105×148 mm, 100×150 mm, 127×178 mm, US Postcard, Square, and custom sizes in inches, millimetres or centimetres
@@ -93,6 +95,7 @@ manifest.json         PWA manifest
 service-worker.js     Offline cache
 favicon.svg           Vector icon
 icons/                PNG app icons (192/512/maskable/apple-touch/favicon)
+vendor/               Two self-hosted MIT libraries (exifr, node-qrcode) — see vendor/README.md
 samples/              Sample exports produced by the automated test suite
 README.md             This file
 DEPLOYMENT.md         Hosting guide (GitHub Pages, Cloudflare Pages, …)
@@ -102,7 +105,7 @@ PRIVACY.md            The short version: everything stays on your device
 CHANGELOG.md          Version history
 ```
 
-No build step. No dependencies. Lightweight vanilla HTML, CSS and JavaScript.
+No build step and no runtime framework — lightweight vanilla HTML, CSS and JavaScript. The only third-party code is two small **self-hosted** MIT libraries in `vendor/` (EXIF parsing via [exifr](https://github.com/MikeKovarik/exifr) and QR generation via [node-qrcode](https://github.com/soldair/node-qrcode)); they are committed to the repo, cached offline, and never loaded from a CDN, so the app still makes zero third-party network requests. Both degrade gracefully if absent.
 
 ## 🖨 Printing
 

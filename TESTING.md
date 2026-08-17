@@ -2,6 +2,45 @@
 
 Postcard Press is verified two ways: an automated headless-browser suite run against the real app, and a manual checklist.
 
+## Automated test report — v1.2.0 (EXIF & QR features)
+
+Run: 2026-08-17 · Chromium (Playwright, headless) · viewport 1440×900
+
+EXIF tests import a JPEG with a hand-built, spec-valid EXIF/TIFF APP1 segment through the real upload pipeline; QR tests assert node-qrcode is used and inspect rendered pixels.
+
+| # | Check | Result | Notes |
+| --- | --- | --- | --- |
+| 1 | Vendored exifr loaded | ✅ PASS | `window.exifr` present |
+| 2 | Vendored node-qrcode loaded (sync `create`) | ✅ PASS | |
+| 3 | EXIF camera parsed | ✅ PASS | `FUJIFILM X-T5` |
+| 4 | EXIF lens parsed | ✅ PASS | `XF35mmF1.4 R` |
+| 5 | EXIF settings composed | ✅ PASS | `35mm · ƒ/1.4 · 1/500s · ISO 200` |
+| 6 | EXIF date formatted | ✅ PASS | `15 Mar 2026` |
+| 7 | `meta.camera` seeded from EXIF | ✅ PASS | |
+| 8 | `{camera}`/`{settings}` token replacement | ✅ PASS | |
+| 9 | `{title}`/`{photographer}`/`{lens}` replacement | ✅ PASS | |
+| 10 | QR uses node-qrcode matrix (long URL encodes) | ✅ PASS | version 41, 89-char URL |
+| 11 | QR renders dark modules on back | ✅ PASS | |
+| 12 | QR dark colour customisable | ✅ PASS | tinted pixels detected |
+| 13 | Token chips render (6) and insert via UI click | ✅ PASS | |
+| 14 | Tokens safe when a card has no EXIF | ✅ PASS | returns empty, no crash |
+
+**Feature suite: 14/14 passed, no console errors.**
+
+### Regression (core pipeline, re-run after the changes)
+
+| Check | Result |
+| --- | --- |
+| Demo project loads 3 postcards | ✅ PASS |
+| JPG 300 DPI export (2007 px, DPI header) | ✅ PASS |
+| Print-ready PDF valid, 6 pages | ✅ PASS |
+| JSON backup/restore round-trip (incl. new `exif` field) | ✅ PASS |
+| Dark theme toggle | ✅ PASS |
+| QR toggle shows controls + adds element | ✅ PASS |
+| No console errors | ✅ PASS |
+
+**Regression: 8/8 passed.**
+
 ## Automated test report — v1.1.0
 
 Run: 2026-07-18 · Chromium (Playwright, headless) · viewports 1440×900 and 390×844

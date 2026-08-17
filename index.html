@@ -257,7 +257,9 @@
 
           <div id="elEditor" class="el-editor" hidden>
             <h3 class="insp-h">Selected element: <span id="elName">—</span></h3>
-            <div class="field" id="elTextRow"><label for="elText">Text</label><textarea id="elText" rows="3"></textarea></div>
+            <div class="field" id="elTextRow"><label for="elText">Text</label><textarea id="elText" rows="3"></textarea>
+              <div class="token-bar" id="elTokens" aria-label="Insert dynamic field"></div>
+            </div>
             <div class="field-row">
               <div class="field flex-1"><label for="elSize">Size (pt)</label><input type="number" id="elSize" min="4" max="72" step="0.5"></div>
               <div class="field flex-1"><label for="elFont">Font</label>
@@ -283,7 +285,27 @@
           <div class="el-toggles" id="elToggles"></div>
           <button class="btn btn-ghost w-full" id="bAddText">＋ Add custom text</button>
 
-          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="bQrOn"> QR code</label><input type="text" id="bQrText" placeholder="https://your-website.com"></div>
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="bQrOn"> QR code</label><input type="text" id="bQrText" placeholder="https://your-website.com" inputmode="url"></div>
+          <div id="qrControls" hidden>
+            <div class="field">
+              <label for="qrSize">QR size <output id="qrSizeOut">11%</output></label>
+              <input type="range" id="qrSize" min="0.07" max="0.4" step="0.005" value="0.11">
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="qrDark">Dark</label><input type="color" id="qrDark" value="#1a1a1a"></div>
+              <div class="field"><label for="qrLight">Light</label><input type="color" id="qrLight" value="#ffffff"></div>
+              <div class="field flex-1"><label for="qrPos">Position</label>
+                <select id="qrPos">
+                  <option value="">Custom (drag)</option>
+                  <option value="br">Bottom-right</option>
+                  <option value="bl">Bottom-left</option>
+                  <option value="tr">Top-right (stamp)</option>
+                  <option value="tl">Top-left</option>
+                </select>
+              </div>
+            </div>
+            <div class="hint">Rendered at high resolution (error-correction M) so it scans crisply in print.</div>
+          </div>
 
           <button class="btn btn-ghost w-full" id="bApplyAll">Apply back design to all postcards</button>
         </section>
@@ -417,6 +439,9 @@
 <input type="file" id="logoInput" accept="image/*" hidden>
 <input type="file" id="projectInput" accept=".json,application/json" hidden>
 
+<!-- Vendored, self-hosted libraries (no CDN, offline-first): EXIF parsing & QR encoding -->
+<script src="vendor/exifr.lite.umd.js"></script>
+<script src="vendor/qrcode.bundle.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
