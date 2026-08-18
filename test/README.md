@@ -6,8 +6,9 @@ hooks. They require Node, `playwright-core`, and a Chromium binary.
 ```bash
 npm install playwright-core
 # point EXECUTABLE at your Chromium, then:
-node test/features.exif-qr.test.js   # EXIF parsing, tokens, QR generation
-node test/regression.test.js         # core pipeline (demo, JPG/PDF export, backup)
+node test/features.exif-qr.test.js              # EXIF parsing, tokens, QR generation
+node test/features.print-postmark-tone.test.js # guides, postmark/stamp, crop & tone, .postcard
+node test/regression.test.js                    # core pipeline (demo, JPG/PDF export, backup)
 ```
 
 - `exifbuilder.js` constructs a spec-valid EXIF/TIFF APP1 segment so the EXIF

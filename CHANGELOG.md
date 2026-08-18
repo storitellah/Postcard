@@ -2,6 +2,20 @@
 
 All notable changes to Postcard Press.
 
+## [1.3.0] — 2026-08-18
+
+### Added
+- **Print-safety guide overlay** — the preview now shows a shaded diagonal-hatch **bleed** band, a solid highlighted **trim** line, and a dashed **safe-zone** inner margin. Guides render in the interactive preview only and are never included in JPG/PNG/PDF exports.
+- **Vintage postmark generator** — a draggable vector postmark element with city/location text on a top arc, a date line on the bottom arc, a centre star, and configurable wavy cancellation lines. Ink presets (slate / black / faded red), adjustable density, and a vintage **multiply** ink-blend toggle.
+- **Custom stamp** — the stamp box can be a placeholder outline, a **vintage perforated frame**, or a **custom uploaded image** (cropped to a perforated stamp shape).
+- **Aspect-ratio crop snapping** on the front photo — Native, 3:2, 4:3, 1:1, 16:9 and 65:24 (XPan panoramic). The window is letterboxed inside the frame; the photo itself is never distorted.
+- **Non-destructive tonal adjustments** — B&W Classic, B&W High-contrast, Warm and Cool white-balance looks, plus Exposure and Contrast sliders, applied live at render time (and at 300 DPI export) via canvas filters.
+- **`.postcard` project archive** — "Export project" now writes a single `.postcard` file bundling photos (base64), layouts, typography and settings; "Import project" and **drag-and-drop** of a `.postcard` file restore the whole workspace.
+
+### Notes
+- All new photo/stamp data persists in the `.postcard`/autosave archive and survives backup/restore.
+- Service worker cache bumped to v1.3.0.
+
 ## [1.2.0] — 2026-08-17
 
 ### Added

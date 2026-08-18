@@ -2,6 +2,26 @@
 
 Postcard Press is verified two ways: an automated headless-browser suite run against the real app, and a manual checklist.
 
+## Automated test report — v1.3.0 (print guides, postmark/stamp, crop & tone, .postcard)
+
+Run: 2026-08-18 · Chromium (Playwright, headless) · viewport 1440×900
+
+| # | Check | Result | Notes |
+| --- | --- | --- | --- |
+| 1 | Guides never appear in exports | ✅ PASS | guides-on vs guides-off export bytes identical |
+| 2 | Aspect crop letterboxes (XPan 65:24) | ✅ PASS | border bands top/bottom, photo centre |
+| 3 | B&W look renders near-grayscale | ✅ PASS | 100% of sampled pixels neutral |
+| 4 | Warm tint warms channels (R>B) | ✅ PASS | |
+| 5 | `adjustFilter` builds a grayscale filter | ✅ PASS | |
+| 6 | Postmark element created via toggle | ✅ PASS | |
+| 7 | Postmark renders coloured ink strokes | ✅ PASS | faded-red arcs + cancellation |
+| 8 | Vintage stamp draws a perforated frame | ✅ PASS | |
+| 9 | `.postcard` restore keeps crop + adjust + postmark | ✅ PASS | round-trip via a File |
+| 10 | Showcase samples regenerated | ✅ PASS | postmark back + B&W panoramic front |
+| 11 | No console errors | ✅ PASS | |
+
+**11/11 passed.** Re-ran the v1.2.0 EXIF/QR suite (14/14) and the core-pipeline regression (8/8) after these changes — all green.
+
 ## Automated test report — v1.2.0 (EXIF & QR features)
 
 Run: 2026-08-17 · Chromium (Playwright, headless) · viewport 1440×900

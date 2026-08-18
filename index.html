@@ -217,6 +217,22 @@
             <button class="btn btn-ghost flex-1" id="fReset">Reset</button>
           </div>
 
+          <h3 class="insp-h">Crop aspect</h3>
+          <div class="chip-grid" id="cropAspects" role="group" aria-label="Aspect ratio crop"></div>
+          <div class="hint">Snaps the photo window to a ratio inside the frame — great for panoramic (XPan) strips. The photo itself is never distorted.</div>
+
+          <h3 class="insp-h">Tonal adjustments <span class="hint-inline">(non-destructive)</span></h3>
+          <div class="chip-grid" id="adjustModes" role="group" aria-label="Photo look"></div>
+          <div class="field">
+            <label for="fExposure">Exposure <output id="fExposureOut">0</output></label>
+            <input type="range" id="fExposure" min="0.6" max="1.5" step="0.01" value="1">
+          </div>
+          <div class="field">
+            <label for="fContrast">Contrast <output id="fContrastOut">0</output></label>
+            <input type="range" id="fContrast" min="0.6" max="1.6" step="0.01" value="1">
+          </div>
+          <button class="btn btn-ghost w-full" id="fAdjustReset">Reset adjustments</button>
+
           <h3 class="insp-h">Text on front</h3>
           <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fTitleOn"> Title</label><input type="text" id="fTitle" placeholder="Photo Title"></div>
           <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="fCaptionOn"> Caption</label><input type="text" id="fCaption" placeholder="A short caption for this photograph."></div>
@@ -307,6 +323,40 @@
             <div class="hint">Rendered at high resolution (error-correction M) so it scans crisply in print.</div>
           </div>
 
+          <h3 class="insp-h">Postal stamp &amp; postmark</h3>
+          <div class="field"><label for="stampStyle">Stamp</label>
+            <select id="stampStyle">
+              <option value="placeholder">Placeholder outline</option>
+              <option value="vintage">Vintage frame</option>
+              <option value="image">Custom image…</option>
+            </select>
+          </div>
+          <div class="field" id="stampImageRow" hidden>
+            <div class="field-row">
+              <button class="btn btn-ghost flex-1" id="btnStampUpload">Upload stamp image…</button>
+              <button class="btn btn-ghost" id="btnStampClear" title="Remove stamp image">✕</button>
+            </div>
+            <div class="hint" id="stampInfo">A square graphic works best (it is cropped to the stamp box).</div>
+          </div>
+
+          <div class="field field-toggle"><label class="tgl"><input type="checkbox" id="bPostmarkOn"> Postmark</label></div>
+          <div id="postmarkControls" hidden>
+            <div class="field"><label for="pmCity">City / location</label><input type="text" id="pmCity" placeholder="Your Location"></div>
+            <div class="field"><label for="pmDate">Date line</label><input type="text" id="pmDate" placeholder="15 MAR 2026"></div>
+            <div class="field">
+              <label>Ink colour</label>
+              <div class="swatch-row" id="pmInks"></div>
+            </div>
+            <div class="field-row">
+              <div class="field flex-1"><label for="pmWaves">Cancellation lines <output id="pmWavesOut">5</output></label>
+                <input type="range" id="pmWaves" min="0" max="8" step="1" value="5"></div>
+              <div class="field flex-1"><label for="pmOpacity">Ink density <output id="pmOpacityOut">85%</output></label>
+                <input type="range" id="pmOpacity" min="0.3" max="1" step="0.02" value="0.85"></div>
+            </div>
+            <div class="field-check"><label><input type="checkbox" id="pmBlend" checked> Vintage ink blend (multiply)</label></div>
+            <div class="hint">The postmark is a vector overlay — drag it over the stamp and photo like a real cancellation.</div>
+          </div>
+
           <button class="btn btn-ghost w-full" id="bApplyAll">Apply back design to all postcards</button>
         </section>
 
@@ -367,9 +417,10 @@
           <h3 class="insp-h">Project</h3>
           <div class="field"><label for="projectFileName">Project name (for files)</label><input type="text" id="projectFileName" placeholder="project"></div>
           <div class="field-row">
-            <button class="btn btn-ghost flex-1" id="btnSaveProject">Save backup (JSON)</button>
-            <button class="btn btn-ghost flex-1" id="btnLoadProject">Restore…</button>
+            <button class="btn btn-ghost flex-1" id="btnSaveProject">Export project</button>
+            <button class="btn btn-ghost flex-1" id="btnLoadProject">Import project…</button>
           </div>
+          <div class="hint">Exports a single <code>.postcard</code> archive with your photos, layouts and settings. Drop a <code>.postcard</code> file anywhere to restore it.</div>
           <h3 class="insp-h">Design presets</h3>
           <div class="field-row">
             <input type="text" id="presetName" placeholder="Preset name" class="flex-1" aria-label="Preset name">
@@ -437,7 +488,8 @@
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 <input type="file" id="logoInput" accept="image/*" hidden>
-<input type="file" id="projectInput" accept=".json,application/json" hidden>
+<input type="file" id="stampInput" accept="image/*" hidden>
+<input type="file" id="projectInput" accept=".postcard,.json,application/json" hidden>
 
 <!-- Vendored, self-hosted libraries (no CDN, offline-first): EXIF parsing & QR encoding -->
 <script src="vendor/exifr.lite.umd.js"></script>

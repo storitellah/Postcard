@@ -447,6 +447,8 @@ function defaultFront() {
     layout: 'gallery',
     borderW: 0.25, borderBottom: 0, borderColor: '#ffffff',
     fit: 'fill',
+    cropAspect: null,
+    adjust: { mode: 'none', exposure: 1, contrast: 1 },
     tx: { x: 0, y: 0, zoom: 1, rot: 0 },
     show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false },
     creditPlace: 'bottom-right',
@@ -469,7 +471,7 @@ const EL_LABELS = {
   caption: 'Caption', story: 'Story', photographer: 'Photographer', copyright: 'Copyright',
   project: 'Project', website: 'Website', date: 'Date', location: 'Location',
   address: 'Address area', stamp: 'Stamp', divider: 'Divider', qr: 'QR code', logo: 'Logo',
-  text: 'Custom text', title: 'Title',
+  text: 'Custom text', title: 'Title', postmark: 'Postmark',
 };
 
 function makeBackLayout(layoutId) {
@@ -670,6 +672,22 @@ async function loadProjectData(data) {
   updateUndoButtons();
 }
 
+/* Load a dropped/picked .postcard (JSON) archive into the workspace. */
+async function restoreProjectFile(file) {
+  try {
+    await showProgress('Restoring project…');
+    const data = JSON.parse(await file.text());
+    await loadProjectData(data);
+    zoomFit();
+    toast('Project restored.');
+  } catch (err) {
+    console.error(err);
+    toast('That file is not a valid Postcard Press project.');
+  } finally {
+    hideProgress();
+  }
+}
+
 const autosaveSoon = debounce(() => { idbSet('autosave', serializeProject()); }, 1200);
 
 /* ═══════════════════════ Text helpers ═══════════════════════ */
@@ -859,6 +877,40 @@ function applyTokens(text, card) {
   return text.replace(/\{(camera|lens|settings|date|title|photographer)\}/g, (_, k) => tokenValue(card, k));
 }
 
+/* ═══════════════════ Aspect crop & tonal adjustments ═══════════════════ */
+const CROP_ASPECTS = [
+  { id: 'native', label: 'Native', ratio: null },
+  { id: '3:2',    label: '3:2',    ratio: 3 / 2 },
+  { id: '4:3',    label: '4:3',    ratio: 4 / 3 },
+  { id: '1:1',    label: '1:1',    ratio: 1 },
+  { id: '16:9',   label: '16:9',   ratio: 16 / 9 },
+  { id: '65:24',  label: '65:24 XPan', ratio: 65 / 24 },
+];
+const ADJUST_MODES = [
+  { id: 'none', label: 'Original' },
+  { id: 'bw',   label: 'B&W' },
+  { id: 'bwhc', label: 'B&W High-contrast' },
+  { id: 'warm', label: 'Warm' },
+  { id: 'cool', label: 'Cool' },
+];
+/* Build a canvas filter string (non-destructive; applied at draw time). */
+function adjustFilter(a) {
+  if (!a) return 'none';
+  const parts = [];
+  if (a.mode === 'bw' || a.mode === 'bwhc') parts.push('grayscale(1)');
+  const exp = (a.exposure ?? 1) * (a.mode === 'bwhc' ? 1.05 : 1);
+  const con = (a.contrast ?? 1) * (a.mode === 'bwhc' ? 1.4 : 1);
+  if (Math.abs(exp - 1) > 0.001) parts.push(`brightness(${exp.toFixed(3)})`);
+  if (Math.abs(con - 1) > 0.001) parts.push(`contrast(${con.toFixed(3)})`);
+  return parts.length ? parts.join(' ') : 'none';
+}
+function adjustTint(a) {
+  if (!a) return null;
+  if (a.mode === 'warm') return 'rgba(255,168,80,0.5)';
+  if (a.mode === 'cool') return 'rgba(70,150,255,0.42)';
+  return null;
+}
+
 /* ═══════════════════════ Front renderer ═══════════════════════ */
 function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const { w: tw, h: th } = trimSize();
@@ -878,33 +930,52 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const pw = noBorder ? W : W - 2 * (b + bw);
   const ph = noBorder ? H : H - (b + bw) - (b + bb);
 
+  /* aspect-ratio crop snapping: shrink the photo window to a target ratio
+     inside the frame, letterboxed with the border colour (already painted) */
+  let wx = px, wy = py, ww = pw, wh = ph;
+  if (f.cropAspect && pw > 2 && ph > 2) {
+    if (pw / ph > f.cropAspect) { ww = ph * f.cropAspect; wx = px + (pw - ww) / 2; }
+    else { wh = pw / f.cropAspect; wy = py + (ph - wh) / 2; }
+  }
+
   const im = imageStore.get(card.imageId);
   ctx.save();
-  ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
-  if (im && pw > 2 && ph > 2) {
+  ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
+  if (im && ww > 2 && wh > 2) {
     const rot = ((f.tx.rot % 360) + 360) % 360;
     const sideways = rot === 90 || rot === 270;
     const iw = sideways ? im.h : im.w, ih = sideways ? im.w : im.h;
-    const base = f.fit === 'fit' ? Math.min(pw / iw, ph / ih) : Math.max(pw / iw, ph / ih);
+    const base = f.fit === 'fit' ? Math.min(ww / iw, wh / ih) : Math.max(ww / iw, wh / ih);
     const s = base * f.tx.zoom;
     const dw = iw * s, dh = ih * s;
     /* pan is stored as a fraction of the overflow so it survives resizes */
-    const ox = (dw - pw) / 2, oy = (dh - ph) / 2;
-    const cx = px + pw / 2 + f.tx.x * Math.max(ox, pw * 0.5), cy = py + ph / 2 + f.tx.y * Math.max(oy, ph * 0.5);
+    const ox = (dw - ww) / 2, oy = (dh - wh) / 2;
+    const cx = wx + ww / 2 + f.tx.x * Math.max(ox, ww * 0.5), cy = wy + wh / 2 + f.tx.y * Math.max(oy, wh * 0.5);
+    const rw = sideways ? dh : dw, rh = sideways ? dw : dh;
+    ctx.save();
+    ctx.filter = adjustFilter(f.adjust);      /* non-destructive tonal filter */
     ctx.translate(cx, cy);
     ctx.rotate(rot * Math.PI / 180);
     ctx.imageSmoothingQuality = 'high';
-    const rw = sideways ? dh : dw, rh = sideways ? dw : dh;
     ctx.drawImage(im.img, -rw / 2, -rh / 2, rw, rh);
-  } else if (pw > 2 && ph > 2) {
+    ctx.restore();                            /* clears filter + transform, keeps clip */
+    /* warm / cool white-balance tint as a soft-light wash */
+    const tint = adjustTint(f.adjust);
+    if (tint) {
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = tint;
+      ctx.fillRect(wx, wy, ww, wh);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  } else if (ww > 2 && wh > 2) {
     /* no photo yet */
-    const g = ctx.createLinearGradient(px, py, px + pw, py + ph);
+    const g = ctx.createLinearGradient(wx, wy, wx + ww, wy + wh);
     g.addColorStop(0, '#d9dee6'); g.addColorStop(1, '#c3cbd8');
-    ctx.fillStyle = g; ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = g; ctx.fillRect(wx, wy, ww, wh);
     ctx.fillStyle = 'rgba(60,70,90,0.45)';
     ctx.font = fontStr(12 / 72 * ppi, 'sans', 'normal', 'bold');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Add a photograph', px + pw / 2, py + ph / 2);
+    ctx.fillText('Add a photograph', wx + ww / 2, wy + wh / 2);
   }
   ctx.restore();
 
@@ -1086,24 +1157,159 @@ function drawBack(ctx, card, ppi, bleed, opts = {}) {
   }
 }
 
+/* ═══════════════════ Postmark & stamp generators ═══════════════════ */
+const POSTMARK_INKS = [
+  { id: 'slate', label: 'Slate', color: '#3b4a56' },
+  { id: 'black', label: 'Black', color: '#1a1a1a' },
+  { id: 'red',   label: 'Faded red', color: '#9e4038' },
+];
+
+/* draw text along a circular arc (degrees; canvas 0°=right, 90°=down) */
+function circText(ctx, text, cx, cy, radius, startDeg, endDeg, fontPx, bottom) {
+  const chars = [...text.toUpperCase()];
+  const n = chars.length;
+  if (!n) return;
+  ctx.textAlign = 'center'; ctx.textBaseline = bottom ? 'top' : 'bottom';
+  ctx.font = `700 ${fontPx}px ${FONTS.sans}`;
+  const a0 = startDeg * Math.PI / 180, a1 = endDeg * Math.PI / 180;
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const ang = a0 + (a1 - a0) * t;
+    ctx.save();
+    ctx.translate(cx + Math.cos(ang) * radius, cy + Math.sin(ang) * radius);
+    ctx.rotate(ang + (bottom ? -Math.PI / 2 : Math.PI / 2));
+    ctx.fillText(chars[i], 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawPostmark(ctx, card, el, r, ppi) {
+  const ink = el.ink || '#3b4a56';
+  const city = (el.city != null ? el.city : card.meta.location).trim() || 'YOUR LOCATION';
+  const date = (el.date != null ? el.date : card.meta.date).trim() || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  const circleD = Math.min(r.h, r.w * 0.55);
+  const cx = r.x + circleD / 2, cy = r.y + r.h / 2;
+  const R = circleD * 0.46;
+  ctx.save();
+  ctx.globalAlpha = el.opacity != null ? el.opacity : 0.85;
+  if (el.blend === 'multiply') ctx.globalCompositeOperation = 'multiply';
+  ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  ctx.lineWidth = Math.max(1, R * 0.05);
+  /* rings */
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, R * 0.78, 0, Math.PI * 2); ctx.stroke();
+  /* arced city (top) and date (bottom) text */
+  const tr = R * 0.88;
+  circText(ctx, city, cx, cy, tr, -168, -12, R * 0.2, false);
+  circText(ctx, date, cx, cy, tr, 168, 12, R * 0.18, true);
+  /* centre: small star + short rule */
+  ctx.beginPath();
+  for (let k = 0; k < 5; k++) {
+    const a = -Math.PI / 2 + k * (Math.PI * 2 / 5);
+    const rr = k % 1 === 0 ? R * 0.16 : R * 0.07;
+    ctx[k === 0 ? 'moveTo' : 'lineTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.fillStyle = ink;
+  ctx.font = `700 ${R * 0.22}px ${FONTS.serif}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('★', cx, cy);
+  /* wavy cancellation lines to the right of the ring */
+  const wx0 = cx + R * 1.05, wx1 = r.x + r.w;
+  if (wx1 - wx0 > R * 0.5) {
+    const lines = el.waves || 5;
+    const amp = (r.h * 0.5) / (lines + 1) * 0.5;
+    ctx.lineWidth = Math.max(1, R * 0.045);
+    for (let l = 0; l < lines; l++) {
+      const ly = cy - (r.h * 0.36) + l * (r.h * 0.72 / (lines - 1 || 1));
+      ctx.beginPath();
+      for (let px = wx0; px <= wx1; px += Math.max(2, R * 0.06)) {
+        const yy = ly + Math.sin((px - wx0) / (R * 0.32)) * amp;
+        px === wx0 ? ctx.moveTo(px, yy) : ctx.lineTo(px, yy);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/* perforated-edge helper: punch semicircular notches around a rect */
+function perforate(ctx, r, ppi, bg) {
+  const step = Math.max(6, Math.min(r.w, r.h) / 11);
+  ctx.save();
+  ctx.fillStyle = bg;
+  ctx.globalCompositeOperation = 'source-over';
+  const punch = (x, y) => { ctx.beginPath(); ctx.arc(x, y, step * 0.42, 0, Math.PI * 2); ctx.fill(); };
+  for (let x = r.x; x <= r.x + r.w + 0.1; x += step) { punch(x, r.y); punch(x, r.y + r.h); }
+  for (let y = r.y; y <= r.y + r.h + 0.1; y += step) { punch(r.x, y); punch(r.x + r.w, y); }
+  ctx.restore();
+}
+
+function drawVintageStamp(ctx, card, el, r, ppi) {
+  ctx.save();
+  /* stamp body */
+  ctx.fillStyle = el.stampColor || '#f7f2e6';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  /* perforations punched in the surrounding background colour */
+  perforate(ctx, r, ppi, '#ffffff');
+  /* inner frame + motif */
+  const pad = Math.min(r.w, r.h) * 0.13;
+  ctx.strokeStyle = el.ink || '#7a6f57';
+  ctx.lineWidth = Math.max(1, ppi / 260);
+  ctx.strokeRect(r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad);
+  ctx.strokeStyle = 'rgba(122,111,87,0.5)';
+  ctx.strokeRect(r.x + pad * 1.5, r.y + pad * 1.5, r.w - 3 * pad, r.h - 3 * pad);
+  ctx.fillStyle = el.ink || '#7a6f57';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `700 ${Math.min(r.w, r.h) * 0.14}px ${FONTS.serif}`;
+  ctx.fillText('✶', r.x + r.w / 2, r.y + r.h * 0.42);
+  ctx.font = `700 ${Math.min(r.w, r.h) * 0.1}px ${FONTS.sans}`;
+  ctx.fillText('POSTCARD', r.x + r.w / 2, r.y + r.h * 0.68);
+  ctx.restore();
+}
+
+function drawStampImage(ctx, im, r, ppi) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+  const s = Math.max(r.w / im.w, r.h / im.h);
+  const dw = im.w * s, dh = im.h * s;
+  ctx.drawImage(im.img, r.x + (r.w - dw) / 2, r.y + (r.h - dh) / 2, dw, dh);
+  ctx.restore();
+  perforate(ctx, r, ppi, '#ffffff');
+  ctx.restore();
+}
+
 function drawBackElement(ctx, card, el, r, ppi, opts) {
   ctx.save();
   switch (el.type) {
     case 'stamp': {
-      ctx.strokeStyle = '#b9b9b4';
-      ctx.lineWidth = Math.max(1, ppi / 200);
-      ctx.setLineDash([ppi * 0.026, ppi * 0.02]);
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#b9b9b4';
-      ctx.font = fontStr(4.6 / 72 * ppi, 'sans', 'normal', 'bold');
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const lh = 5.6 / 72 * ppi;
-      ctx.letterSpacing = `${0.6 / 72 * ppi}px`;
-      ctx.fillText('PLACE', r.x + r.w / 2, r.y + r.h / 2 - lh);
-      ctx.fillText('STAMP', r.x + r.w / 2, r.y + r.h / 2);
-      ctx.fillText('HERE', r.x + r.w / 2, r.y + r.h / 2 + lh);
-      ctx.letterSpacing = '0px';
+      const style = el.stampStyle || 'placeholder';
+      if (style === 'image' && el.stampImageId && imageStore.get(el.stampImageId)) {
+        drawStampImage(ctx, imageStore.get(el.stampImageId), r, ppi);
+      } else if (style === 'vintage') {
+        drawVintageStamp(ctx, card, el, r, ppi);
+      } else {
+        ctx.strokeStyle = '#b9b9b4';
+        ctx.lineWidth = Math.max(1, ppi / 200);
+        ctx.setLineDash([ppi * 0.026, ppi * 0.02]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#b9b9b4';
+        ctx.font = fontStr(4.6 / 72 * ppi, 'sans', 'normal', 'bold');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const lh = 5.6 / 72 * ppi;
+        ctx.letterSpacing = `${0.6 / 72 * ppi}px`;
+        ctx.fillText('PLACE', r.x + r.w / 2, r.y + r.h / 2 - lh);
+        ctx.fillText('STAMP', r.x + r.w / 2, r.y + r.h / 2);
+        ctx.fillText('HERE', r.x + r.w / 2, r.y + r.h / 2 + lh);
+        ctx.letterSpacing = '0px';
+      }
+      break;
+    }
+    case 'postmark': {
+      drawPostmark(ctx, card, el, r, ppi);
       break;
     }
     case 'address': {
@@ -1428,22 +1634,43 @@ function drawPreview() {
   }
 }
 
+/* diagonal warning-hatch fill for the bleed band (preview only) */
+function hatchPattern() {
+  if (hatchPattern._p) return hatchPattern._p;
+  const t = document.createElement('canvas'); t.width = t.height = 8;
+  const c = t.getContext('2d');
+  c.strokeStyle = 'rgba(226,80,80,0.5)'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(-2, 6); c.lineTo(6, -2); c.moveTo(2, 10); c.lineTo(10, 2); c.stroke();
+  return (hatchPattern._p = c.createPattern(t, 'repeat'));
+}
+
 function drawGuides(ctx, x, y, ppi, bleed) {
   const { w: tw, h: th } = trimSize();
+  const cw = (tw + 2 * bleed) * ppi, ch = (th + 2 * bleed) * ppi;
   ctx.save();
   if (bleed > 0) {
-    /* bleed edge (canvas edge) — red hairline */
-    ctx.strokeStyle = 'rgba(226,80,80,0.55)';
+    /* bleed band: shaded warning hatch between the canvas edge and the trim */
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, cw, ch);                                   /* outer (bleed edge) */
+    ctx.rect(x + bleed * ppi, y + bleed * ppi, tw * ppi, th * ppi);   /* inner (trim) */
+    ctx.clip('evenodd');
+    ctx.fillStyle = hatchPattern();
+    ctx.fillRect(x, y, cw, ch);
+    ctx.restore();
+    /* bleed edge — red hairline */
+    ctx.strokeStyle = 'rgba(226,80,80,0.7)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, (tw + 2 * bleed) * ppi - 1, (th + 2 * bleed) * ppi - 1);
+    ctx.strokeRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
   }
-  /* trim line */
-  ctx.strokeStyle = 'rgba(90,150,240,0.75)';
-  ctx.lineWidth = 1;
+  /* trim line — solid blue highlight (the actual cut) */
+  ctx.strokeStyle = 'rgba(64,132,238,0.9)';
+  ctx.lineWidth = 1.5;
   ctx.strokeRect(x + bleed * ppi, y + bleed * ppi, tw * ppi, th * ppi);
-  /* safe margin */
+  /* safe zone — dashed green inner padding */
   if (state.safeOn) {
-    ctx.strokeStyle = 'rgba(60,190,150,0.65)';
+    ctx.strokeStyle = 'rgba(52,190,140,0.8)';
+    ctx.lineWidth = 1;
     ctx.setLineDash([5, 4]);
     ctx.strokeRect(x + (bleed + SAFE_IN) * ppi, y + (bleed + SAFE_IN) * ppi, (tw - 2 * SAFE_IN) * ppi, (th - 2 * SAFE_IN) * ppi);
     ctx.setLineDash([]);
@@ -2338,6 +2565,14 @@ function syncFrontInputs() {
   $('#fitFill').setAttribute('aria-pressed', f.fit === 'fill');
   $('#fitFit').classList.toggle('active', f.fit === 'fit');
   $('#fitFit').setAttribute('aria-pressed', f.fit === 'fit');
+  const cropId = (CROP_ASPECTS.find(a => a.ratio === f.cropAspect) || CROP_ASPECTS.find(a => a.ratio == null && !f.cropAspect) || { id: 'native' }).id;
+  $$('#cropAspects .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.id === (f.cropAspect ? cropId : 'native')));
+  const a = f.adjust || { mode: 'none', exposure: 1, contrast: 1 };
+  $$('#adjustModes .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.id === a.mode));
+  $('#fExposure').value = a.exposure ?? 1;
+  $('#fExposureOut').textContent = ((a.exposure ?? 1) > 1 ? '+' : '') + Math.round(((a.exposure ?? 1) - 1) * 100);
+  $('#fContrast').value = a.contrast ?? 1;
+  $('#fContrastOut').textContent = ((a.contrast ?? 1) > 1 ? '+' : '') + Math.round(((a.contrast ?? 1) - 1) * 100);
   $('#fZoom').value = f.tx.zoom;
   $('#fZoomOut').textContent = Math.round(f.tx.zoom * 100) + '%';
   $('#fTitleOn').checked = f.show.title;
@@ -2372,6 +2607,28 @@ function syncBackInputs() {
     const preset = qrPresetOf(qe);
     $('#qrPos').value = preset;
   }
+  /* stamp style */
+  const st = stampElement(card);
+  const style = st ? (st.stampStyle || 'placeholder') : 'placeholder';
+  $('#stampStyle').value = style;
+  $('#stampImageRow').hidden = style !== 'image';
+  $('#stampInfo').textContent = (st && st.stampImageId) ? 'Custom stamp image loaded.' : 'A square graphic works best (it is cropped to the stamp box).';
+  /* postmark */
+  const pm = postmarkElement(card);
+  $('#bPostmarkOn').checked = !!pm;
+  $('#postmarkControls').hidden = !pm;
+  if (pm) {
+    $('#pmCity').value = pm.city != null ? pm.city : '';
+    $('#pmCity').placeholder = (card && card.meta.location) || 'Your Location';
+    $('#pmDate').value = pm.date != null ? pm.date : '';
+    $('#pmDate').placeholder = (card && card.meta.date) || '15 MAR 2026';
+    $('#pmWaves').value = pm.waves ?? 5;
+    $('#pmWavesOut').textContent = pm.waves ?? 5;
+    $('#pmOpacity').value = pm.opacity ?? 0.85;
+    $('#pmOpacityOut').textContent = Math.round((pm.opacity ?? 0.85) * 100) + '%';
+    $('#pmBlend').checked = pm.blend !== 'normal';
+    $$('#pmInks .swatch').forEach(s => s.classList.toggle('active', s.dataset.color === (pm.ink || '#3b4a56')));
+  }
   renderElToggles();
 }
 
@@ -2390,7 +2647,7 @@ function renderElToggles() {
   const card = currentCard();
   if (!card) return;
   for (const el of card.back.elements) {
-    if (el.type === 'qr') continue;
+    if (el.type === 'qr' || el.type === 'postmark') continue;
     const label = EL_LABELS[el.bind || el.type] || 'Element';
     const div = document.createElement('div');
     div.className = 'field-check';
@@ -2567,6 +2824,53 @@ function bindFrontInputs() {
     wrap.appendChild(b);
   }
   const front = () => currentCard() ? currentCard().front : null;
+
+  /* crop aspect chips */
+  const cropWrap = $('#cropAspects');
+  for (const a of CROP_ASPECTS) {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.dataset.id = a.id; b.textContent = a.label;
+    b.addEventListener('click', () => {
+      const f = front(); if (!f) return;
+      f.cropAspect = a.ratio;
+      commit(); syncFrontInputs(); requestRender();
+    });
+    cropWrap.appendChild(b);
+  }
+  /* tonal adjustment mode chips */
+  const adjWrap = $('#adjustModes');
+  for (const m of ADJUST_MODES) {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.dataset.id = m.id; b.textContent = m.label;
+    b.addEventListener('click', () => {
+      const f = front(); if (!f) return;
+      f.adjust = f.adjust || { mode: 'none', exposure: 1, contrast: 1 };
+      f.adjust.mode = m.id;
+      commit(); syncFrontInputs(); requestRender();
+    });
+    adjWrap.appendChild(b);
+  }
+  const adj = () => { const f = front(); if (!f) return null; f.adjust = f.adjust || { mode: 'none', exposure: 1, contrast: 1 }; return f.adjust; };
+  $('#fExposure').addEventListener('input', (e) => {
+    const a = adj(); if (!a || syncing) return;
+    a.exposure = parseFloat(e.target.value);
+    $('#fExposureOut').textContent = (a.exposure > 1 ? '+' : '') + Math.round((a.exposure - 1) * 100);
+    requestRender();
+  });
+  $('#fExposure').addEventListener('change', commit);
+  $('#fContrast').addEventListener('input', (e) => {
+    const a = adj(); if (!a || syncing) return;
+    a.contrast = parseFloat(e.target.value);
+    $('#fContrastOut').textContent = (a.contrast > 1 ? '+' : '') + Math.round((a.contrast - 1) * 100);
+    requestRender();
+  });
+  $('#fContrast').addEventListener('change', commit);
+  $('#fAdjustReset').addEventListener('click', () => {
+    const f = front(); if (!f) return;
+    f.adjust = { mode: 'none', exposure: 1, contrast: 1 };
+    commit(); syncFrontInputs(); requestRender();
+  });
+
   $('#fBorderW').addEventListener('input', (e) => {
     const f = front(); if (!f || syncing) return;
     f.borderW = parseFloat(e.target.value); f.layout = 'custom';
@@ -2712,6 +3016,70 @@ function bindBackInputs() {
     if (qe && p) { qe.x = p.x; qe.y = p.y; commit(); requestRender(); }
   });
 
+  /* ── stamp style & custom image ── */
+  $('#stampStyle').addEventListener('change', (e) => {
+    const card = currentCard(); if (!card) return;
+    let st = stampElement(card);
+    if (!st) { st = backElement('stamp', { x: 0.855, y: 0.055, w: 0.115, h: 0.24 }); card.back.elements.push(st); }
+    st.stampStyle = e.target.value;
+    if (e.target.value === 'image' && !st.stampImageId) $('#stampInput').click();
+    commit(); syncBackInputs(); requestRender();
+  });
+  $('#btnStampUpload').addEventListener('click', () => $('#stampInput').click());
+  $('#stampInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const card = currentCard(); if (!card) { e.target.value = ''; return; }
+    const dataURL = await readFileAsDataURL(file);
+    const id = await addImageFromDataURL(dataURL, file.name);
+    let st = stampElement(card);
+    if (!st) { st = backElement('stamp', { x: 0.855, y: 0.055, w: 0.115, h: 0.24 }); card.back.elements.push(st); }
+    st.stampImageId = id; st.stampStyle = 'image';
+    commit(); syncBackInputs(); requestRender();
+    toast('Custom stamp image added.');
+    e.target.value = '';
+  });
+  $('#btnStampClear').addEventListener('click', () => {
+    const st = stampElement(currentCard());
+    if (st) { st.stampImageId = null; st.stampStyle = 'placeholder'; commit(); syncBackInputs(); requestRender(); }
+  });
+
+  /* ── postmark ── */
+  const pmInks = $('#pmInks');
+  for (const ink of POSTMARK_INKS) {
+    const s = document.createElement('button');
+    s.className = 'swatch'; s.dataset.color = ink.color; s.style.background = ink.color;
+    s.title = ink.label; s.setAttribute('aria-label', ink.label + ' ink');
+    s.addEventListener('click', () => {
+      const pm = postmarkElement(currentCard()); if (!pm) return;
+      pm.ink = ink.color; commit(); syncBackInputs(); requestRender();
+    });
+    pmInks.appendChild(s);
+  }
+  $('#bPostmarkOn').addEventListener('change', (e) => {
+    const card = currentCard(); if (!card) return;
+    if (e.target.checked) ensurePostmark(card);
+    else {
+      card.back.elements = card.back.elements.filter(el => el.type !== 'postmark');
+      if (selectedEl && selectedEl.type === 'postmark') { selectedEl = null; syncElEditor(); }
+    }
+    commit(); syncBackInputs(); requestRender();
+    if (e.target.checked) setSide('back');
+  });
+  const pmField = (id, key, isNum) => $(id).addEventListener('input', debounce((e) => {
+    const pm = postmarkElement(currentCard()); if (!pm) return;
+    pm[key] = isNum ? parseFloat(e.target.value) : e.target.value;
+    if (key === 'waves') $('#pmWavesOut').textContent = pm.waves;
+    if (key === 'opacity') $('#pmOpacityOut').textContent = Math.round(pm.opacity * 100) + '%';
+    commit(); requestRender();
+  }, 250));
+  pmField('#pmCity', 'city'); pmField('#pmDate', 'date');
+  pmField('#pmWaves', 'waves', true); pmField('#pmOpacity', 'opacity', true);
+  $('#pmBlend').addEventListener('change', (e) => {
+    const pm = postmarkElement(currentCard()); if (!pm) return;
+    pm.blend = e.target.checked ? 'multiply' : 'normal';
+    commit(); requestRender();
+  });
+
   /* selected element editor */
   $('#elText').addEventListener('input', debounce((e) => {
     if (!selectedEl || selectedEl.type !== 'text') return;
@@ -2785,6 +3153,16 @@ function ensureQrElement(card) {
   }
 }
 function qrElement(card) { return card ? card.back.elements.find(e => e.type === 'qr') : null; }
+function postmarkElement(card) { return card ? card.back.elements.find(e => e.type === 'postmark') : null; }
+function stampElement(card) { return card ? card.back.elements.find(e => e.type === 'stamp') : null; }
+function ensurePostmark(card) {
+  let el = postmarkElement(card);
+  if (!el) {
+    el = backElement('postmark', { x: 0.55, y: 0.06, w: 0.4, h: 0.2, ink: '#3b4a56', city: null, date: null, blend: 'multiply', opacity: 0.85, waves: 5 });
+    card.back.elements.push(el);
+  }
+  return el;
+}
 
 function bindExportInputs() {
   $$('[data-expformat]').forEach(b => b.addEventListener('click', () => {
@@ -2814,26 +3192,15 @@ function bindExportInputs() {
   $('#btnSaveProject').addEventListener('click', () => {
     const data = serializeProject();
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    downloadBlob(blob, sanitizeName(state.projectName) + '-postcard-press.json');
-    toast('Project backup saved as JSON.');
+    downloadBlob(blob, sanitizeName(state.projectName) + '.postcard');
+    toast('Project exported as a .postcard archive.');
   });
   $('#btnLoadProject').addEventListener('click', () => $('#projectInput').click());
   $('#projectInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    try {
-      await showProgress('Restoring project…');
-      const data = JSON.parse(await file.text());
-      await loadProjectData(data);
-      zoomFit();
-      toast('Project restored.');
-    } catch (err) {
-      console.error(err);
-      toast('That file is not a valid Postcard Press backup.');
-    } finally {
-      hideProgress();
-      e.target.value = '';
-    }
+    await restoreProjectFile(file);
+    e.target.value = '';
   });
 
   /* design presets (localStorage) */
@@ -2982,7 +3349,12 @@ function bindChrome() {
     e.preventDefault();
     dragDepth = 0;
     $('#dropzone').classList.remove('dragover');
-    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    const files = [...(e.dataTransfer.files || [])];
+    if (!files.length) return;
+    /* a dropped .postcard / JSON archive restores the whole project */
+    const project = files.find(f => /\.postcard$/i.test(f.name) || /\.json$/i.test(f.name) || f.type === 'application/json');
+    if (project) { restoreProjectFile(project); return; }
+    handleFiles(files);
   });
 
   /* dialogs */
@@ -3158,4 +3530,6 @@ window.PostcardPress = {
   serializeProject, loadProjectData, handleFiles, selectCard, setSide, setView,
   requestRender, zoomFit,
   extractExif, applyExifToCard, applyTokens, tokenValue, qrMatrix, drawQr, currentCard,
+  ensurePostmark, postmarkElement, stampElement, restoreProjectFile,
+  adjustFilter, adjustTint, CROP_ASPECTS, ADJUST_MODES,
 };

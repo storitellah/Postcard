@@ -16,6 +16,9 @@ Design professional, print-ready photo postcards — front and back — entirely
 - **Photographer credits** — bottom left, bottom right, centre, on the back, or hidden, in standard formats (`Photo: Your Name`, `Photograph by Your Name`, `© Your Name`, `Your Name / Studio`, or custom)
 - **EXIF metadata & smart tokens** — camera, lens, focal length, aperture, shutter, ISO and capture date are read from each photo *on your device* and can be dropped into any text with the `{camera}` `{lens}` `{settings}` `{date}` `{title}` `{photographer}` tokens (with quick-insert chips in the Text Inspector)
 - **Dynamic QR codes** — a toggleable back-of-card QR element (powered by node-qrcode, error-correction M) with URL/target text, size slider, dark/light colour pickers and position presets, rasterised at high resolution so it stays crisp in print
+- **Vintage postmark & custom stamp** — a draggable vector postmark (city arc, date line, centre star, wavy cancellation lines, slate/black/faded-red ink with a vintage multiply blend) plus a stamp box that can be a placeholder, a perforated vintage frame, or your own uploaded graphic
+- **Aspect-ratio crop snapping & tonal adjustments** — snap the photo window to Native / 3:2 / 4:3 / 1:1 / 16:9 / 65:24 (XPan), and apply non-destructive B&W, high-contrast mono, warm/cool white balance, and exposure/contrast — live and at 300 DPI export
+- **Print-safety guides** — shaded bleed hatch, solid trim line and dashed safe zone in the preview, always excluded from exports
 
 ### Print-ready output
 - **Sizes** — 4×6 in, 5×7 in, A6, 105×148 mm, 100×150 mm, 127×178 mm, US Postcard, Square, and custom sizes in inches, millimetres or centimetres
@@ -38,7 +41,7 @@ Design professional, print-ready photo postcards — front and back — entirely
 ### Local-first
 - Works completely offline (PWA, installable)
 - Autosaves your project to your browser (IndexedDB)
-- Save/restore full project backups as JSON
+- Save/restore full project backups as a single `.postcard` archive (drag-and-drop to restore)
 - Design presets and credit presets stored locally
 - Zero network calls for your content — verified in the codebase: there is no upload code
 
@@ -96,6 +99,7 @@ service-worker.js     Offline cache
 favicon.svg           Vector icon
 icons/                PNG app icons (192/512/maskable/apple-touch/favicon)
 vendor/               Two self-hosted MIT libraries (exifr, node-qrcode) — see vendor/README.md
+test/                 Headless-browser test suites (see test/README.md)
 samples/              Sample exports produced by the automated test suite
 README.md             This file
 DEPLOYMENT.md         Hosting guide (GitHub Pages, Cloudflare Pages, …)
