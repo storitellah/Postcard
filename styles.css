@@ -489,6 +489,39 @@ input[type="color"] {
 }
 
 /* ── Chips & swatches ── */
+/* preset gallery (front & back archetypes) */
+#frontLayouts, #backLayouts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.preset-tile {
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  color: var(--ink-2);
+  transition: border-color 0.16s var(--ease), transform 0.12s var(--ease), background 0.16s var(--ease);
+}
+.preset-tile:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
+.preset-tile:active { transform: scale(0.97); }
+.preset-thumb {
+  display: block; border-radius: 5px; overflow: hidden;
+  background: var(--hover);
+  color: var(--ink-3);
+  aspect-ratio: 40 / 28;
+}
+.preset-thumb svg { display: block; width: 100%; height: 100%; }
+.preset-name { font-size: 10px; font-weight: 650; line-height: 1.15; text-align: center; color: inherit; }
+.preset-tile.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.preset-tile.active .preset-thumb { color: var(--accent-strong); background: rgba(226,105,79,0.12); }
+
 .chip-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   padding: 7px 12px;

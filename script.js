@@ -27,9 +27,10 @@ const SIZE_PRESETS = [
 ];
 
 const FONTS = {
-  sans:  '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-  serif: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
-  mono:  'ui-monospace, "SF Mono", Consolas, Menlo, monospace',
+  sans:   '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+  serif:  '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
+  mono:   'ui-monospace, "SF Mono", Consolas, Menlo, monospace',
+  script: '"Snell Roundhand", "Segoe Script", "Bradley Hand", "Brush Script MT", "Comic Sans MS", cursive',
 };
 
 const FRONT_LAYOUTS = [
@@ -51,6 +52,69 @@ const BACK_LAYOUTS = [
   { id: 'story',     label: 'Story Card' },
   { id: 'custom',    label: 'Custom' },
 ];
+
+/* ═══════════════════════ Preset registries ═══════════════════════
+   Declarative CardPreset objects (see README / feature spec). Front presets
+   parameterise the front renderer via `front`; back presets declare an
+   `elements` template that is instantiated into draggable back elements.
+   thumbnailSvg is a lightweight inline vector preview (uses currentColor). */
+const T = (v) => `<svg viewBox="0 0 40 28" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.4">${v}</svg>`;
+
+const FRONT_PRESETS = [
+  {
+    id: 'classic-gallery', name: 'Classic Gallery', category: 'front',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="5" y="5" width="30" height="14" fill="currentColor" opacity=".5"/><line x1="13" y1="22.5" x2="27" y2="22.5" stroke-width="1.6"/>'),
+    front: { style: 'gallery', borderW: 0.2, borderBottom: 0, borderColor: '#ffffff', fit: 'fill',
+      matHairline: true, captionStyle: 'serif', creditPlace: 'center', creditFormat: 'photo',
+      show: { title: false, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'museum-broadsheet', name: 'Museum Broadsheet', category: 'front',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="4.5" y="4.5" width="31" height="13" fill="currentColor" opacity=".5"/><line x1="4.5" y1="20" x2="22" y2="20" stroke-width="2.2"/><line x1="4.5" y1="23" x2="30" y2="23" stroke-width="1"/>'),
+    front: { style: 'broadsheet', borderW: 0.22, borderBottom: 0.95, borderColor: '#fbfaf7', fit: 'fill',
+      matHairline: false, captionStyle: 'sans', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: true, caption: true, website: false, project: true, copyright: false, logo: false } },
+  },
+  {
+    id: 'fullbleed-modern', name: 'Full-Bleed Modern', category: 'front',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".5"/><rect x="4" y="19" width="14" height="4.5" fill="#fff" opacity=".85"/><rect x="26" y="19" width="10" height="3" fill="#fff" opacity=".7"/>'),
+    front: { style: 'modern', borderW: 0, borderBottom: 0, borderColor: '#101216', fit: 'fill',
+      matHairline: false, captionStyle: 'sans', overlayCorners: true, creditPlace: 'bottom-right', creditFormat: 'photo',
+      show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'split-diptych', name: 'Split Diptych', category: 'front',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="4.5" y="4.5" width="14.5" height="15" fill="currentColor" opacity=".5"/><rect x="21" y="4.5" width="14.5" height="15" fill="currentColor" opacity=".35"/><line x1="20" y1="4.5" x2="20" y2="19.5"/><line x1="12" y1="23" x2="28" y2="23" stroke-width="1"/>'),
+    front: { style: 'diptych', borderW: 0.14, borderBottom: 0.34, borderColor: '#ffffff', fit: 'fill',
+      matHairline: false, captionStyle: 'sans', creditPlace: 'center', creditFormat: 'photo',
+      show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'vintage-polaroid', name: 'Vintage Polaroid', category: 'front',
+    thumbnailSvg: T('<rect x="4.5" y="2.5" width="31" height="23" rx="1" fill="#fff" stroke="currentColor" opacity=".9"/><rect x="7" y="4.5" width="26" height="14" fill="currentColor" opacity=".5"/><path d="M10 22h13" stroke-width="1.2" opacity=".7"/>'),
+    front: { style: 'polaroid', borderW: 0.16, borderBottom: 0.9, borderColor: '#fffdf6', fit: 'fill',
+      matHairline: false, captionStyle: 'script', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: false, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'fineart-mat', name: 'Fine-Art Mat', category: 'front',
+    thumbnailSvg: T('<rect x="1.5" y="1.5" width="37" height="25" rx="1.5" fill="currentColor" opacity=".06"/><rect x="8" y="6" width="24" height="12" fill="currentColor" opacity=".5"/><rect x="7" y="5" width="26" height="14" stroke-width="0.6" opacity=".6"/><line x1="14" y1="22.5" x2="26" y2="22.5" stroke-width="1"/>'),
+    front: { style: 'mat', borderW: 0.45, borderBottom: 0.1, borderColor: '#f4efe3', fit: 'fit',
+      matHairline: true, captionStyle: 'serif', creditPlace: 'center', creditFormat: 'photo',
+      show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'custom', name: 'Custom', category: 'front',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><path d="M20 8v12M14 14h12" stroke-width="1.6" opacity=".6"/>'),
+    front: null,   /* keeps current front values */
+  },
+];
+
+/* legacy front layout id → new preset id (for old projects) */
+const FRONT_LAYOUT_ALIAS = {
+  'full-bleed': 'fullbleed-modern', gallery: 'classic-gallery', editorial: 'museum-broadsheet',
+  minimal: 'classic-gallery', 'wide-bottom': 'museum-broadsheet', museum: 'museum-broadsheet', custom: 'custom',
+};
 
 const SHEETS = {
   a4:     { label: 'A4',     w: 210 * MM, h: 297 * MM },
@@ -444,14 +508,18 @@ async function importPhotoFile(file) {
 /* ── default structures ── */
 function defaultFront() {
   return {
-    layout: 'gallery',
-    borderW: 0.25, borderBottom: 0, borderColor: '#ffffff',
+    layout: 'gallery',           /* legacy id, kept in sync with `style` */
+    style: 'gallery',            /* front archetype (preset) */
+    borderW: 0.2, borderBottom: 0, borderColor: '#ffffff',
     fit: 'fill',
     cropAspect: null,
+    matHairline: true,
+    captionStyle: 'serif',
+    overlayCorners: false,
     adjust: { mode: 'none', exposure: 1, contrast: 1 },
     tx: { x: 0, y: 0, zoom: 1, rot: 0 },
-    show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false },
-    creditPlace: 'bottom-right',
+    show: { title: false, caption: true, website: false, project: false, copyright: false, logo: false },
+    creditPlace: 'center',
     creditFormat: 'photo',
     creditCustom: '',
   };
@@ -472,6 +540,8 @@ const EL_LABELS = {
   project: 'Project', website: 'Website', date: 'Date', location: 'Location',
   address: 'Address area', stamp: 'Stamp', divider: 'Divider', qr: 'QR code', logo: 'Logo',
   text: 'Custom text', title: 'Title', postmark: 'Postmark',
+  box: 'Labelled box', airmail: 'Airmail border', exiftable: 'EXIF table', coords: 'Coordinates',
+  bio: 'Bio', contact: 'Contact', cta: 'Headline / CTA', edition: 'Edition',
 };
 
 function makeBackLayout(layoutId) {
@@ -535,10 +605,87 @@ function makeBackLayout(layoutId) {
   return els;
 }
 
-function defaultBack(layoutId = 'classic') {
+/* ── Declarative back presets (authentic postal geometries) ── */
+const BACK_PRESETS = [
+  {
+    id: 'classic-universal', name: 'Classic Universal', category: 'back',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="20" y1="4" x2="20" y2="24"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/><line x1="23" y1="15" x2="36" y2="15" stroke-width="0.8"/><line x1="23" y1="18.5" x2="36" y2="18.5" stroke-width="0.8"/><line x1="23" y1="22" x2="36" y2="22" stroke-width="0.8"/><line x1="4" y1="7" x2="16" y2="7" stroke-width="0.8" opacity=".6"/>'),
+    elements: [
+      { type: 'divider', x: 0.5, y: 0.07, w: 0.0035, h: 0.86 },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'text', bind: 'caption', x: 0.05, y: 0.06, w: 0.4, h: 0.08, size: 10, font: 'serif', style: 'italic' },
+      { type: 'text', bind: 'story', x: 0.05, y: 0.2, w: 0.4, h: 0.5, size: 8.5, font: 'serif', lineHeight: 1.5 },
+      { type: 'text', bind: 'credit', x: 0.05, y: 0.86, w: 0.4, h: 0.06, size: 7, color: '#7a7a7a' },
+      { type: 'address', x: 0.55, y: 0.44, w: 0.4, h: 0.4 },
+      { type: 'text', bind: 'location', x: 0.55, y: 0.88, w: 0.4, h: 0.05, size: 6.5, color: '#8a8a8a', align: 'right' },
+    ],
+  },
+  {
+    id: 'field-note', name: 'Field Note / Dispatch', category: 'back',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="4" y1="6" x2="18" y2="6" stroke-width="0.8"/><line x1="4" y1="9" x2="18" y2="9" stroke-width="0.6" opacity=".6"/><line x1="4" y1="11.5" x2="18" y2="11.5" stroke-width="0.6" opacity=".6"/><line x1="4" y1="14" x2="16" y2="14" stroke-width="0.6" opacity=".6"/><rect x="22" y="5" width="14" height="8" stroke-width="0.7" opacity=".7"/><rect x="22" y="17" width="6" height="6" stroke-dasharray="1.2 1"/>'),
+    elements: [
+      { type: 'text', bind: 'caption', x: 0.05, y: 0.06, w: 0.42, h: 0.07, size: 10, weight: 'bold' },
+      { type: 'text', bind: 'story', x: 0.05, y: 0.16, w: 0.42, h: 0.76, size: 7.8, font: 'serif', lineHeight: 1.5 },
+      { type: 'divider', x: 0.52, y: 0.06, w: 0.0035, h: 0.86 },
+      { type: 'text', bind: 'exiftable', x: 0.57, y: 0.06, w: 0.38, h: 0.28, size: 7, font: 'mono', lineHeight: 1.7, color: '#3a3a3a' },
+      { type: 'box', label: 'LOCATION', bind: 'coords', x: 0.57, y: 0.42, w: 0.38, h: 0.16, size: 7.5, font: 'mono' },
+      { type: 'qr', x: 0.57, y: 0.64, w: 0.14, h: 0.14, qrDark: '#1a1a1a', qrLight: '#ffffff' },
+      { type: 'text', bind: 'credit', x: 0.74, y: 0.68, w: 0.22, h: 0.1, size: 6.5, color: '#7a7a7a' },
+    ],
+  },
+  {
+    id: 'art-print', name: 'Minimalist Art Print', category: 'back',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="12" y1="6" x2="28" y2="6" stroke-width="1.4"/><line x1="14" y1="12" x2="26" y2="12" stroke-width="0.6" opacity=".6"/><line x1="14" y1="14.5" x2="26" y2="14.5" stroke-width="0.6" opacity=".6"/><rect x="13" y="18.5" width="14" height="4" stroke-width="0.7" opacity=".7"/>'),
+    elements: [
+      { type: 'text', bind: 'project', x: 0.1, y: 0.07, w: 0.8, h: 0.06, size: 8, weight: 'bold', align: 'center', letterSpacing: 0.16 },
+      { type: 'text', bind: 'caption', x: 0.1, y: 0.16, w: 0.8, h: 0.08, size: 12, font: 'serif', style: 'italic', align: 'center' },
+      { type: 'text', bind: 'bio', x: 0.18, y: 0.3, w: 0.64, h: 0.24, size: 8, font: 'serif', lineHeight: 1.6, align: 'center', color: '#4a4a4a' },
+      { type: 'box', label: 'EDITION', bind: 'edition', x: 0.32, y: 0.6, w: 0.36, h: 0.12, size: 8, align: 'center' },
+      { type: 'text', bind: 'copyright', x: 0.1, y: 0.86, w: 0.8, h: 0.05, size: 6.5, align: 'center', color: '#8a8a8a' },
+    ],
+  },
+  {
+    id: 'airmail', name: 'Vintage Airmail', category: 'back',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="3.5" y="3.5" width="33" height="21" stroke-dasharray="2 1.4" stroke-width="1"/><circle cx="30" cy="9" r="4" stroke-width="0.9"/><line x1="6" y1="16" x2="22" y2="16" stroke-width="0.7" opacity=".6"/><line x1="6" y1="19" x2="22" y2="19" stroke-width="0.7" opacity=".6"/>'),
+    elements: [
+      { type: 'airmail', x: 0.012, y: 0.02, w: 0.976, h: 0.96 },
+      { type: 'postmark', x: 0.5, y: 0.05, w: 0.44, h: 0.2, ink: '#3b4a56', city: null, date: null, blend: 'multiply', opacity: 0.85, waves: 5 },
+      { type: 'text', bind: 'caption', x: 0.06, y: 0.08, w: 0.4, h: 0.08, size: 9.5, font: 'mono', weight: 'bold' },
+      { type: 'text', bind: 'story', x: 0.06, y: 0.2, w: 0.4, h: 0.5, size: 7.5, font: 'mono', lineHeight: 1.6 },
+      { type: 'text', bind: 'credit', x: 0.06, y: 0.86, w: 0.4, h: 0.05, size: 6.5, font: 'mono', color: '#7a7a7a' },
+      { type: 'address', x: 0.55, y: 0.5, w: 0.38, h: 0.34 },
+    ],
+  },
+  {
+    id: 'direct-mailer', name: 'Direct Mailer / Promo', category: 'back',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="4" y="4.5" width="22" height="4" fill="currentColor" opacity=".55"/><line x1="4" y1="11" x2="24" y2="11" stroke-width="0.6" opacity=".6"/><line x1="4" y1="13.5" x2="24" y2="13.5" stroke-width="0.6" opacity=".6"/><rect x="29" y="4.5" width="7" height="7" stroke-dasharray="1.2 1"/><rect x="4" y="20" width="16" height="3.5" stroke-width="0.7" opacity=".5"/>'),
+    elements: [
+      { type: 'text', bind: 'cta', x: 0.05, y: 0.06, w: 0.62, h: 0.12, size: 15, weight: 'bold', color: '#1a1a1a' },
+      { type: 'text', bind: 'story', x: 0.05, y: 0.24, w: 0.58, h: 0.34, size: 8.5, lineHeight: 1.5 },
+      { type: 'text', bind: 'contact', x: 0.05, y: 0.62, w: 0.58, h: 0.22, size: 8, lineHeight: 1.7, color: '#3a3a3a' },
+      { type: 'qr', x: 0.72, y: 0.06, w: 0.22, h: 0.22, qrDark: '#1a1a1a', qrLight: '#ffffff' },
+      { type: 'text', bind: 'website', x: 0.72, y: 0.3, w: 0.22, h: 0.05, size: 7, align: 'center', color: '#7a7a7a' },
+      { type: 'box', label: 'BARCODE CLEARANCE', x: 0.68, y: 0.78, w: 0.28, h: 0.14, size: 6, align: 'center', dashed: true },
+    ],
+  },
+];
+const BACK_PRESET_IDS = new Set(BACK_PRESETS.map(p => p.id));
+/* legacy back layout id → new preset id */
+const BACK_LAYOUT_ALIAS = {
+  classic: 'classic-universal', minimal: 'art-print', editorial: 'field-note',
+  gallery: 'classic-universal', museum: 'field-note', story: 'art-print',
+};
+
+function instantiateBackElements(specs) {
+  return specs.map(s => backElement(s.type, { ...s }));
+}
+
+function defaultBack(layoutId = 'classic-universal') {
+  const preset = BACK_PRESETS.find(p => p.id === layoutId);
+  const elements = preset ? instantiateBackElements(preset.elements) : makeBackLayout(layoutId);
   return {
     layout: layoutId,
-    elements: makeBackLayout(layoutId),
+    elements,
     qrOn: false, qrText: '',
     logoOn: false,
   };
@@ -668,8 +815,22 @@ async function loadProjectData(data) {
     try { await addImageFromDataURL(im.dataURL, im.name, id); } catch (e) { /* skip broken image */ }
   }
   restore(JSON.stringify(data.state));
+  (state.cards || []).forEach(normalizeCard);
   history.stack = [snapshot()]; history.idx = 0;
   updateUndoButtons();
+}
+
+/* Backfill fields added in later versions so older archives keep working. */
+function normalizeCard(card) {
+  const f = card.front || (card.front = defaultFront());
+  if (!f.style) f.style = FRONT_LAYOUT_ALIAS[f.layout] || 'gallery';
+  if (f.matHairline === undefined) f.matHairline = false;
+  if (!f.captionStyle) f.captionStyle = 'serif';
+  if (f.overlayCorners === undefined) f.overlayCorners = false;
+  if (!f.adjust) f.adjust = { mode: 'none', exposure: 1, contrast: 1 };
+  if (f.cropAspect === undefined) f.cropAspect = null;
+  if (card.imageId2 === undefined) card.imageId2 = null;
+  if (card.exif === undefined) card.exif = null;
 }
 
 /* Load a dropped/picked .postcard (JSON) archive into the workspace. */
@@ -771,12 +932,36 @@ function bindText(card, bind) {
       const bits = [m.location.trim(), m.date.trim(), m.edition.trim(), m.camera.trim()].filter(Boolean);
       return bits.join('  ·  ');
     }
+    case 'exiftable': {
+      const e = card.exif || {};
+      const rows = [
+        ['Camera', (m.camera && m.camera.trim()) || e.camera],
+        ['Lens', e.lens],
+        ['Exposure', e.settings],
+        ['Date', (m.date && m.date.trim()) || e.date],
+      ].filter(r => r[1]);
+      if (!rows.length) return '';
+      const pad = Math.max(...rows.map(r => r[0].length));
+      return rows.map(([k, v]) => `${k.padEnd(pad)}  ${v}`).join('\n');
+    }
+    case 'coords':  return m.location.trim() || '';
+    case 'bio':     return (gv('photographer') !== 'Your Name' || m.story.trim()) ? `${gv('photographer')}\n${gv('website')}` : '';
+    case 'contact': {
+      const bits = [gv('photographer'), gv('website'), gv('email')].filter(v => v && !/^Your /.test(v));
+      return bits.join('\n');
+    }
+    case 'cta':     return m.title.trim() || m.caption.trim();
+    case 'edition': return m.edition.trim();
   }
   return '';
 }
 const BIND_PLACEHOLDER = {
   caption: 'Photo Title', story: 'The story behind this photograph…',
   date: '2026', location: 'Your Location', meta: 'Your Location · 2026', title: 'Photo Title',
+  exiftable: 'Camera   Your camera\nLens     Your lens\nExposure 35mm · ƒ/1.4 · 1/500s\nDate     2026',
+  coords: 'Your Location', bio: 'Photographer Name\nyour-website.com',
+  contact: 'Your Name\nyour-website.com\nyour@email.com', cta: 'Your Headline Here',
+  edition: 'Edition ____ of ____',
 };
 
 /* ═══════════════════════ EXIF metadata ═══════════════════════
@@ -911,6 +1096,63 @@ function adjustTint(a) {
   return null;
 }
 
+/* resolve the active front archetype/preset id (with legacy fallback) */
+function frontStyle(f) { return f.style || FRONT_LAYOUT_ALIAS[f.layout] || 'classic-gallery'; }
+
+/* Draw one photo into a rect: clip, fill/fit preserving aspect, pan/zoom/rotate,
+   apply the non-destructive tonal filter, then a warm/cool tint wash. Reused by
+   the single-photo path and both diptych panes. */
+function drawPhotoInto(ctx, im, o) {
+  const { x, y, w, h, fit, tx, adjust, ppi } = o;
+  if (w < 2 || h < 2) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  if (im) {
+    const rot = (((tx.rot || 0) % 360) + 360) % 360;
+    const sideways = rot === 90 || rot === 270;
+    const iw = sideways ? im.h : im.w, ih = sideways ? im.w : im.h;
+    const base = fit === 'fit' ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+    const s = base * (tx.zoom || 1);
+    const dw = iw * s, dh = ih * s;
+    const ox = (dw - w) / 2, oy = (dh - h) / 2;
+    const cx = x + w / 2 + (tx.x || 0) * Math.max(ox, w * 0.5), cy = y + h / 2 + (tx.y || 0) * Math.max(oy, h * 0.5);
+    const rw = sideways ? dh : dw, rh = sideways ? dw : dh;
+    ctx.save();
+    ctx.filter = adjustFilter(adjust);
+    ctx.translate(cx, cy);
+    ctx.rotate(rot * Math.PI / 180);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(im.img, -rw / 2, -rh / 2, rw, rh);
+    ctx.restore();
+    const tint = adjustTint(adjust);
+    if (tint) {
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = tint; ctx.fillRect(x, y, w, h);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  } else {
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, '#d9dee6'); g.addColorStop(1, '#c3cbd8');
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(60,70,90,0.45)';
+    ctx.font = fontStr(Math.min(12, w / ppi * 22) / 72 * ppi, 'sans', 'normal', 'bold');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(o.label || 'Add a photograph', x + w / 2, y + h / 2);
+  }
+  ctx.restore();
+}
+
+/* subtle blind-deboss hairline (fine-art mat) around a rect */
+function drawMatHairline(ctx, x, y, w, h) {
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.strokeRect(x - 2.5, y - 2.5, w + 5, h + 5);
+  ctx.restore();
+}
+
 /* ═══════════════════════ Front renderer ═══════════════════════ */
 function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const { w: tw, h: th } = trimSize();
@@ -939,51 +1181,27 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   }
 
   const im = imageStore.get(card.imageId);
-  ctx.save();
-  ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
-  if (im && ww > 2 && wh > 2) {
-    const rot = ((f.tx.rot % 360) + 360) % 360;
-    const sideways = rot === 90 || rot === 270;
-    const iw = sideways ? im.h : im.w, ih = sideways ? im.w : im.h;
-    const base = f.fit === 'fit' ? Math.min(ww / iw, wh / ih) : Math.max(ww / iw, wh / ih);
-    const s = base * f.tx.zoom;
-    const dw = iw * s, dh = ih * s;
-    /* pan is stored as a fraction of the overflow so it survives resizes */
-    const ox = (dw - ww) / 2, oy = (dh - wh) / 2;
-    const cx = wx + ww / 2 + f.tx.x * Math.max(ox, ww * 0.5), cy = wy + wh / 2 + f.tx.y * Math.max(oy, wh * 0.5);
-    const rw = sideways ? dh : dw, rh = sideways ? dw : dh;
-    ctx.save();
-    ctx.filter = adjustFilter(f.adjust);      /* non-destructive tonal filter */
-    ctx.translate(cx, cy);
-    ctx.rotate(rot * Math.PI / 180);
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(im.img, -rw / 2, -rh / 2, rw, rh);
-    ctx.restore();                            /* clears filter + transform, keeps clip */
-    /* warm / cool white-balance tint as a soft-light wash */
-    const tint = adjustTint(f.adjust);
-    if (tint) {
-      ctx.globalCompositeOperation = 'soft-light';
-      ctx.fillStyle = tint;
-      ctx.fillRect(wx, wy, ww, wh);
-      ctx.globalCompositeOperation = 'source-over';
-    }
-  } else if (ww > 2 && wh > 2) {
-    /* no photo yet */
-    const g = ctx.createLinearGradient(wx, wy, wx + ww, wy + wh);
-    g.addColorStop(0, '#d9dee6'); g.addColorStop(1, '#c3cbd8');
-    ctx.fillStyle = g; ctx.fillRect(wx, wy, ww, wh);
-    ctx.fillStyle = 'rgba(60,70,90,0.45)';
-    ctx.font = fontStr(12 / 72 * ppi, 'sans', 'normal', 'bold');
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Add a photograph', wx + ww / 2, wy + wh / 2);
+  const style = frontStyle(f);
+  if (style === 'split-diptych' && ww > 2 && wh > 2) {
+    /* two comparative photos with a border-colour gap as the divider */
+    const portrait = wh > ww;
+    const gap = Math.max(3, f.borderW * ppi * 0.7);
+    const im2 = card.imageId2 ? imageStore.get(card.imageId2) : null;
+    let a, bR;
+    if (portrait) { const hh = (wh - gap) / 2; a = [wx, wy, ww, hh]; bR = [wx, wy + hh + gap, ww, hh]; }
+    else { const half = (ww - gap) / 2; a = [wx, wy, half, wh]; bR = [wx + half + gap, wy, half, wh]; }
+    drawPhotoInto(ctx, im, { x: a[0], y: a[1], w: a[2], h: a[3], fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
+    drawPhotoInto(ctx, im2, { x: bR[0], y: bR[1], w: bR[2], h: bR[3], fit: f.fit, tx: { x: 0, y: 0, zoom: 1, rot: 0 }, adjust: f.adjust, ppi, label: 'Add 2nd photo' });
+  } else {
+    drawPhotoInto(ctx, im, { x: wx, y: wy, w: ww, h: wh, fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
+    if (f.matHairline && ww > 2 && wh > 2) drawMatHairline(ctx, wx, wy, ww, wh);
   }
-  ctx.restore();
 
   /* ── text on front ── */
   const dark = luminance(f.borderColor) > 0.5;
   const inkOnBorder = dark ? '#232323' : '#f4f4f2';
   const softOnBorder = dark ? '#8a8a86' : 'rgba(244,244,242,0.75)';
-  const leftAlign = f.layout === 'editorial' || f.layout === 'museum';
+  const leftAlign = style === 'museum-broadsheet';
   const m = card.meta;
   const safe = SAFE_IN * ppi;
 
@@ -993,10 +1211,19 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const zx = b + Math.max(bw, safe * 0.8);
   const zw = W - 2 * zx;
 
+  const big = style === 'museum-broadsheet';
+  const capFont = f.captionStyle === 'script' ? 'script' : f.captionStyle === 'sans' ? 'sans' : 'serif';
   const pieces = [];
   if (f.show.project) pieces.push({ text: gv('project').toUpperCase(), size: 6.5, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.12 });
-  if (f.show.title && (m.title.trim() || !opts.export)) pieces.push({ text: applyTokens(m.title.trim(), card) || 'Photo Title', size: f.layout === 'wide-bottom' || f.layout === 'museum' ? 12 : 10.5, font: 'serif', weight: 'bold', color: inkOnBorder });
-  if (f.show.caption && (m.caption.trim() || !opts.export)) pieces.push({ text: applyTokens(m.caption.trim(), card) || 'A short caption for this photograph.', size: 7.5, font: 'serif', style: 'italic', color: dark ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
+  if (f.show.title && (m.title.trim() || !opts.export)) pieces.push({ text: applyTokens(m.title.trim(), card) || 'Photo Title', size: big ? 13 : 10.5, font: 'serif', weight: 'bold', color: inkOnBorder });
+  if (f.show.caption && (m.caption.trim() || !opts.export)) pieces.push({ text: applyTokens(m.caption.trim(), card) || 'A short caption for this photograph.', size: capFont === 'script' ? 11 : 7.5, font: capFont, style: capFont === 'serif' ? 'italic' : 'normal', color: dark ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
+  /* broadsheet plaque adds a shot-details line and a series index */
+  if (style === 'museum-broadsheet') {
+    const details = card.exif ? card.exif.settings : (m.camera.trim());
+    if (details) pieces.push({ text: details, size: 6.5, font: 'sans', color: softOnBorder, ls: 0.04 });
+    const idx = [gv('project') !== 'Project Name' ? '' : '', m.edition.trim()].filter(Boolean).join('  ·  ') || (m.edition.trim());
+    if (m.edition.trim()) pieces.push({ text: m.edition.trim().toUpperCase(), size: 6, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.1 });
+  }
   const smallBits = [];
   if (f.show.website) smallBits.push(gv('website'));
   if (f.show.copyright) smallBits.push(gv('copyright'));
@@ -1331,6 +1558,65 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
     case 'divider': {
       ctx.fillStyle = '#cfcfca';
       ctx.fillRect(r.x, r.y, Math.max(r.w, ppi / 220), Math.max(r.h, ppi / 220));
+      break;
+    }
+    case 'airmail': {
+      /* classic red/blue airmail chevrons: slanted dashes walking the border ring */
+      const band = Math.max(4, Math.min(r.w, r.h) * 0.028);
+      const seg = band * 1.5;
+      ctx.save();
+      /* clip to the ring so slanted dashes never bleed inward */
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.rect(r.x + band, r.y + band, r.w - 2 * band, r.h - 2 * band);
+      ctx.clip('evenodd');
+      const per = 2 * ((r.w - band) + (r.h - band));
+      const dash = (cx, cy, nx, ny, idx) => {
+        /* a parallelogram slanted along travel direction (nx,ny) */
+        ctx.fillStyle = idx % 2 ? '#c0392b' : '#22468f';
+        const tx = nx, ty = ny;            /* travel */
+        const px = -ny, py = nx;           /* perpendicular (into band) */
+        const a = seg * 0.55, sk = band * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + tx * a, cy + ty * a);
+        ctx.lineTo(cx + tx * a + px * band - tx * sk, cy + ty * a + py * band - ty * sk);
+        ctx.lineTo(cx + px * band - tx * sk, cy + py * band - ty * sk);
+        ctx.closePath(); ctx.fill();
+      };
+      let idx = 0;
+      for (let x = r.x; x < r.x + r.w - band; x += seg) dash(x, r.y, 1, 0, idx++);          /* top */
+      for (let y = r.y; y < r.y + r.h - band; y += seg) dash(r.x + r.w - band, y, 0, 1, idx++); /* right */
+      for (let x = r.x + r.w; x > r.x + band; x -= seg) dash(x, r.y + r.h - band, -1, 0, idx++); /* bottom */
+      for (let y = r.y + r.h; y > r.y + band; y -= seg) dash(r.x, y, 0, -1, idx++);          /* left */
+      ctx.restore();
+      break;
+    }
+    case 'box': {
+      const label = el.label || '';
+      const dashed = el.dashed;
+      ctx.strokeStyle = el.color && el.color !== '#2a2a2a' ? el.color : '#b9b9b4';
+      ctx.lineWidth = Math.max(1, ppi / 260);
+      if (dashed) ctx.setLineDash([ppi * 0.02, ppi * 0.015]);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.setLineDash([]);
+      const value = el.bind ? applyTokens(bindText(card, el.bind), card) : el.text;
+      const labelPx = 5.4 / 72 * ppi;
+      if (label) {
+        ctx.fillStyle = '#9a9a94';
+        ctx.font = fontStr(labelPx, 'sans', 'normal', 'bold');
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.letterSpacing = `${0.5 / 72 * ppi}px`;
+        ctx.fillText(label, r.x + labelPx * 0.6, r.y + labelPx * 0.6);
+        ctx.letterSpacing = '0px';
+      }
+      if (value || (!opts.export && el.bind && BIND_PLACEHOLDER[el.bind])) {
+        const shown = value || BIND_PLACEHOLDER[el.bind];
+        const sizePx = (el.size || 8) / 72 * ppi;
+        ctx.fillStyle = value ? (el.color && el.color !== '#2a2a2a' ? el.color : '#2a2a2a') : 'rgba(150,150,146,0.7)';
+        ctx.font = fontStr(sizePx, el.font || 'sans', 'normal', 'normal');
+        drawWrapped(ctx, shown, r.x + labelPx * 0.6, r.y + (label ? labelPx * 2 : labelPx), r.w - labelPx * 1.2, sizePx * 1.4, el.align || 'left', r.h - labelPx * 2);
+      }
       break;
     }
     case 'qr': {
@@ -2306,15 +2592,15 @@ async function loadDemoProject() {
       { kind: 'dusk', w: 1800, h: 1200, name: 'evening-ridge',
         title: 'Evening over the Ridge', caption: 'Last light settles over the valley.',
         story: 'Shot on the final evening of the workshop, just as the haze lifted. The ridge went quiet, and for a few minutes the whole valley held its breath.',
-        location: 'Rift Valley', date: 'March 2026', layoutF: 'gallery', layoutB: 'classic' },
+        location: 'Rift Valley', date: 'March 2026', layoutF: 'classic-gallery', layoutB: 'classic-universal' },
       { kind: 'coast', w: 1200, h: 1600, name: 'morning-tide',
         title: 'Morning Tide', caption: 'The sea returning at first light.',
         story: 'A slow exposure at dawn. Fishermen were already out beyond the sandbar; the tide came back in around their footprints.',
-        location: 'Coastal Kenya', date: 'January 2026', layoutF: 'editorial', layoutB: 'story' },
+        location: 'Coastal Kenya', date: 'January 2026', layoutF: 'museum-broadsheet', layoutB: 'field-note' },
       { kind: 'dune', w: 1800, h: 1200, name: 'golden-hour',
         title: 'Golden Hour', caption: 'Dust and light across the plains.',
         story: 'The herd crossed just before sunset, kicking dust into the low sun. This frame is for everyone who waited with me.',
-        location: 'Amboseli', date: 'June 2026', layoutF: 'full-bleed', layoutB: 'gallery' },
+        location: 'Amboseli', date: 'June 2026', layoutF: 'fullbleed-modern', layoutB: 'art-print' },
     ];
     state.global.photographer = '';
     state.global.project = 'Postcards from the Field';
@@ -2325,9 +2611,7 @@ async function loadDemoProject() {
       const card = makeCard(id, d.name);
       card.meta.title = d.title; card.meta.caption = d.caption; card.meta.story = d.story;
       card.meta.location = d.location; card.meta.date = d.date;
-      applyFrontLayout(card.front, d.layoutF);
-      card.front.show.title = d.layoutF !== 'full-bleed';
-      card.front.show.caption = d.layoutF === 'editorial';
+      applyFrontPreset(card.front, d.layoutF);
       card.back = defaultBack(d.layoutB);
       state.cards.push(card);
     }
@@ -2359,6 +2643,31 @@ function applyFrontLayout(front, layoutId) {
     front.show.caption = layoutId !== 'wide-bottom' ? front.show.caption : true;
   }
   if (layoutId === 'museum') front.show.caption = true;
+}
+
+/* Apply a declarative front preset to the front model (keeps photo transform). */
+function applyFrontPreset(front, presetId) {
+  const p = FRONT_PRESETS.find(x => x.id === presetId);
+  front.style = presetId;
+  front.layout = presetId;
+  if (!p || !p.front) return;              /* 'custom' keeps current values */
+  const d = p.front;
+  front.borderW = d.borderW; front.borderBottom = d.borderBottom; front.borderColor = d.borderColor;
+  front.fit = d.fit;
+  front.matHairline = !!d.matHairline;
+  front.captionStyle = d.captionStyle || 'serif';
+  front.overlayCorners = !!d.overlayCorners;
+  front.creditPlace = d.creditPlace || front.creditPlace;
+  front.creditFormat = d.creditFormat || front.creditFormat;
+  front.show = Object.assign({ title: false, caption: false, website: false, project: false, copyright: false, logo: false }, d.show);
+}
+
+/* Rebuild a card's back from a declarative back preset (preserves QR text). */
+function applyBackPreset(card, presetId) {
+  const keep = { qrOn: card.back.qrOn, qrText: card.back.qrText };
+  card.back = defaultBack(presetId);
+  Object.assign(card.back, keep);
+  if (card.back.qrOn) ensureQrElement(card);
 }
 
 /* ═══════════════════ Timeline & media list ═══════════════════ */
@@ -2554,7 +2863,10 @@ function syncCardInputs() {
 function syncFrontInputs() {
   const card = currentCard();
   const f = card ? card.front : defaultFront();
-  $$('#frontLayouts .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.id === f.layout));
+  $$('#frontLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === frontStyle(f)));
+  const isDiptych = frontStyle(f) === 'diptych';
+  $('#diptychRow').hidden = !isDiptych;
+  if (isDiptych) $('#diptychInfo').textContent = (card && card.imageId2) ? 'Second photo loaded.' : 'The Split Diptych preset places two photos side by side.';
   $('#fBorderW').value = f.borderW;
   $('#fBorderWOut').textContent = fmtIn(f.borderW);
   $('#fBorderBottom').value = f.borderBottom;
@@ -2592,7 +2904,7 @@ function syncFrontInputs() {
 function syncBackInputs() {
   const card = currentCard();
   const b = card ? card.back : defaultBack();
-  $$('#backLayouts .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.id === b.layout));
+  $$('#backLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === (BACK_PRESET_IDS.has(b.layout) ? b.layout : BACK_LAYOUT_ALIAS[b.layout] || b.layout)));
   $('#bCaption').value = card ? card.meta.caption : '';
   $('#bStory').value = card ? card.meta.story : '';
   $('#bQrOn').checked = b.qrOn;
@@ -2811,17 +3123,24 @@ function bindCardInputs() {
   });
 }
 
+function presetCard(preset, onPick) {
+  const b = document.createElement('button');
+  b.className = 'preset-tile'; b.dataset.id = preset.id;
+  b.setAttribute('aria-label', preset.name);
+  b.innerHTML = `<span class="preset-thumb">${preset.thumbnailSvg}</span><span class="preset-name">${preset.name}</span>`;
+  b.addEventListener('click', onPick);
+  return b;
+}
+
 function bindFrontInputs() {
   const wrap = $('#frontLayouts');
-  for (const l of FRONT_LAYOUTS) {
-    const b = document.createElement('button');
-    b.className = 'chip'; b.dataset.id = l.id; b.textContent = l.label;
-    b.addEventListener('click', () => {
+  for (const p of FRONT_PRESETS) {
+    wrap.appendChild(presetCard(p, () => {
       const card = currentCard(); if (!card) return;
-      applyFrontLayout(card.front, l.id);
-      commit(); syncFrontInputs(); requestRender();
-    });
-    wrap.appendChild(b);
+      applyFrontPreset(card.front, p.id);
+      if (p.id === 'split-diptych' && !card.imageId2) toast('Add a second photo below for the diptych.');
+      commit(); syncFrontInputs(); syncCardInputs(); requestRender();
+    }));
   }
   const front = () => currentCard() ? currentCard().front : null;
 
@@ -2873,15 +3192,15 @@ function bindFrontInputs() {
 
   $('#fBorderW').addEventListener('input', (e) => {
     const f = front(); if (!f || syncing) return;
-    f.borderW = parseFloat(e.target.value); f.layout = 'custom';
+    f.borderW = parseFloat(e.target.value); f.layout = 'custom'; f.style = 'custom';
     $('#fBorderWOut').textContent = fmtIn(f.borderW);
-    $$('#frontLayouts .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.id === 'custom'));
+    $$('#frontLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === 'custom'));
     requestRender();
   });
   $('#fBorderW').addEventListener('change', commit);
   $('#fBorderBottom').addEventListener('input', (e) => {
     const f = front(); if (!f || syncing) return;
-    f.borderBottom = parseFloat(e.target.value); f.layout = 'custom';
+    f.borderBottom = parseFloat(e.target.value); f.layout = 'custom'; f.style = 'custom';
     $('#fBorderBottomOut').textContent = fmtIn(f.borderBottom);
     requestRender();
   });
@@ -2909,6 +3228,24 @@ function bindFrontInputs() {
   $('#fRotL').addEventListener('click', () => { const f = front(); if (f) { f.tx.rot = (f.tx.rot + 270) % 360; commit(); requestRender(); } });
   $('#fRotR').addEventListener('click', () => { const f = front(); if (f) { f.tx.rot = (f.tx.rot + 90) % 360; commit(); requestRender(); } });
   $('#fReset').addEventListener('click', () => { const f = front(); if (f) { f.tx = { x: 0, y: 0, zoom: 1, rot: 0 }; commit(); syncFrontInputs(); requestRender(); } });
+
+  /* diptych: second photo */
+  $('#btnDiptychUpload').addEventListener('click', () => $('#diptychInput').click());
+  $('#diptychInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) { return; }
+    const card = currentCard(); if (!card) { e.target.value = ''; return; }
+    const id = await importPhotoFile(file);
+    card.imageId2 = id;
+    commit(); syncFrontInputs(); requestRender();
+    toast('Second photo added to the diptych.');
+    e.target.value = '';
+  });
+  $('#btnDiptychClear').addEventListener('click', () => {
+    const card = currentCard(); if (!card) return;
+    if (card.imageId2 && !state.cards.some(c => c.imageId === card.imageId2 || c.imageId2 === card.imageId2 && c !== card)) imageStore.delete(card.imageId2);
+    card.imageId2 = null;
+    commit(); syncFrontInputs(); requestRender();
+  });
 
   const show = (id, key) => $(id).addEventListener('change', (e) => {
     const f = front(); if (!f) return;
@@ -2956,20 +3293,14 @@ function bindFrontInputs() {
 
 function bindBackInputs() {
   const wrap = $('#backLayouts');
-  for (const l of BACK_LAYOUTS) {
-    const b = document.createElement('button');
-    b.className = 'chip'; b.dataset.id = l.id; b.textContent = l.label;
-    b.addEventListener('click', () => {
+  for (const p of BACK_PRESETS) {
+    wrap.appendChild(presetCard(p, () => {
       const card = currentCard(); if (!card) return;
-      const keep = { qrOn: card.back.qrOn, qrText: card.back.qrText };
-      card.back = defaultBack(l.id);
-      Object.assign(card.back, keep);
-      if (card.back.qrOn) ensureQrElement(card);
+      applyBackPreset(card, p.id);
       selectedEl = null;
       commit(); syncBackInputs(); syncElEditor(); requestRender();
       setSide('back');
-    });
-    wrap.appendChild(b);
+    }));
   }
   $('#bCaption').addEventListener('input', debounce((e) => {
     const card = currentCard(); if (!card) return;
@@ -3532,4 +3863,5 @@ window.PostcardPress = {
   extractExif, applyExifToCard, applyTokens, tokenValue, qrMatrix, drawQr, currentCard,
   ensurePostmark, postmarkElement, stampElement, restoreProjectFile,
   adjustFilter, adjustTint, CROP_ASPECTS, ADJUST_MODES,
+  FRONT_PRESETS, BACK_PRESETS, applyFrontPreset, applyBackPreset, frontStyle, defaultBack, normalizeCard,
 };

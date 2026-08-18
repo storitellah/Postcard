@@ -9,6 +9,8 @@ Design professional, print-ready photo postcards — front and back — entirely
 ## ✨ Features
 
 ### Design studio
+- **Front preset gallery** — six gallery-grade archetypes with vector thumbnails: Classic Gallery, Museum Broadsheet, Full-Bleed Modern, Split Diptych (two photos + divider), Vintage Polaroid, and Fine-Art Mat — plus fully custom controls
+- **Back preset gallery** — five authentic postal layouts: Classic Universal, Field Note / Dispatch (with an EXIF data table), Minimalist Art Print, Vintage Airmail (chevron border + postmark), and Direct Mailer / Promo
 - **Front designer** — full-bleed photographs, gallery borders, editorial layouts, museum labels, wide bottom borders, minimal frames, or fully custom designs
 - **Back designer** — a real postcard back with caption, story, photographer credit, copyright, project, website, date, location, address lines, stamp placeholder, divider, optional QR code, logo and free custom text blocks — every element draggable, resizable and recolourable
 - **Professional border engine** — equal borders on all four sides, adjustable width and colour, always outside the photograph; photos are never cropped or distorted by the border

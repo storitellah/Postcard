@@ -2,6 +2,26 @@
 
 Postcard Press is verified two ways: an automated headless-browser suite run against the real app, and a manual checklist.
 
+## Automated test report — v1.4.0 (expanded preset & template engine)
+
+Run: 2026-08-18 · Chromium (Playwright, headless) · viewport 1440×900
+
+| # | Check | Result | Notes |
+| --- | --- | --- | --- |
+| 1 | Front registry: 6 archetypes + custom, valid schema | ✅ PASS | id/name/category/thumbnailSvg present |
+| 2 | Back registry: 5 archetypes, valid schema | ✅ PASS | |
+| 3 | All 6+1 front presets apply & render | ✅ PASS | non-blank output for each |
+| 4 | Split Diptych draws two panes split by a divider | ✅ PASS | left/right differ, centre is border gap |
+| 5 | All 5 back presets apply & render | ✅ PASS | ≥4 elements each |
+| 6 | Vintage Airmail border draws red + blue chevrons | ✅ PASS | |
+| 7 | Field Note EXIF table renders | ✅ PASS | |
+| 8 | Legacy project normalises (layout→style) & renders | ✅ PASS | backward compatible |
+| 9 | `.postcard` preserves front style + diptych + back preset | ✅ PASS | round-trip via a File |
+| 10 | Showcase samples regenerated | ✅ PASS | diptych front, airmail back |
+| 11 | No console errors | ✅ PASS | |
+
+**11/11 passed.** Full regression re-run after these changes: v1.2 EXIF/QR **14/14**, v1.3 print/postmark/tone **11/11**, core pipeline **8/8** — **44/44 total, no console errors.**
+
 ## Automated test report — v1.3.0 (print guides, postmark/stamp, crop & tone, .postcard)
 
 Run: 2026-08-18 · Chromium (Playwright, headless) · viewport 1440×900

@@ -217,6 +217,15 @@
             <button class="btn btn-ghost flex-1" id="fReset">Reset</button>
           </div>
 
+          <div class="field" id="diptychRow" hidden>
+            <label>Second photo <span class="hint-inline">(diptych)</span></label>
+            <div class="field-row">
+              <button class="btn btn-ghost flex-1" id="btnDiptychUpload">Upload 2nd photo…</button>
+              <button class="btn btn-ghost" id="btnDiptychClear" title="Remove second photo">✕</button>
+            </div>
+            <div class="hint" id="diptychInfo">The Split Diptych preset places two photos side by side.</div>
+          </div>
+
           <h3 class="insp-h">Crop aspect</h3>
           <div class="chip-grid" id="cropAspects" role="group" aria-label="Aspect ratio crop"></div>
           <div class="hint">Snaps the photo window to a ratio inside the frame — great for panoramic (XPan) strips. The photo itself is never distorted.</div>
@@ -489,6 +498,7 @@
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 <input type="file" id="logoInput" accept="image/*" hidden>
 <input type="file" id="stampInput" accept="image/*" hidden>
+<input type="file" id="diptychInput" accept="image/*" hidden>
 <input type="file" id="projectInput" accept=".postcard,.json,application/json" hidden>
 
 <!-- Vendored, self-hosted libraries (no CDN, offline-first): EXIF parsing & QR encoding -->

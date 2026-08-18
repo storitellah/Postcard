@@ -8,6 +8,7 @@ npm install playwright-core
 # point EXECUTABLE at your Chromium, then:
 node test/features.exif-qr.test.js              # EXIF parsing, tokens, QR generation
 node test/features.print-postmark-tone.test.js # guides, postmark/stamp, crop & tone, .postcard
+node test/features.preset-engine.test.js        # front/back preset registries, diptych, airmail, compat
 node test/regression.test.js                    # core pipeline (demo, JPG/PDF export, backup)
 ```
 

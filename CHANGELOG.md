@@ -2,6 +2,18 @@
 
 All notable changes to Postcard Press.
 
+## [1.4.0] — 2026-08-18
+
+### Added — Expanded preset & template engine
+- **Declarative preset registries** (`FRONT_PRESETS`, `BACK_PRESETS`) following a `CardPreset` schema (`id`, `name`, `category`, `thumbnailSvg`, `defaults`). Presets are pure configuration; the picker is now a **thumbnail gallery** with lightweight inline-SVG previews.
+- **Six front archetypes:** Classic Gallery (delicate white border + blind-deboss hairline + centred serif caption), Museum Broadsheet (framed photo over a typographic plaque with headline, subtitle, shot details and series index), Full-Bleed Modern (edge-to-edge with scrim-protected corner type), **Split Diptych** (two comparative photos with a divider and unified credit — adds a per-card second photo), Vintage Polaroid (thick instant-white bottom border with a script-font note), and Fine-Art Mat (warm-ivory floating mat with a hairline deboss).
+- **Five back archetypes:** Classic Universal (50/50 rule, stamp box, address grid), Field Note / Dispatch (editorial prose column + EXIF data table, coordinates box and QR), Minimalist Art Print (no address lines; centred exhibition stamp, bio, edition box, copyright), Vintage Airmail (red/blue chevron border, circular postmark, typewriter mono), and Direct Mailer / Promo (CTA headline, paragraph, QR banner, contact grid, barcode clearance box).
+- New back element types: `airmail` chevron border, `box` (labelled/edition/coords/barcode), plus `exiftable`, `coords`, `bio`, `contact`, `cta`, `edition` text bindings. New `script` font for handwritten captions.
+
+### Compatibility
+- Older projects load unchanged: legacy front `layout` ids and back layouts are mapped to the nearest new preset, and missing fields are backfilled on import.
+- Service worker cache bumped to v1.4.0.
+
 ## [1.3.0] — 2026-08-18
 
 ### Added
