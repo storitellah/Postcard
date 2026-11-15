@@ -1,18 +1,42 @@
 {
-  "name": "Postcard Press by Storitellah",
+  "name": "Postcard Press",
   "short_name": "Postcard Press",
-  "description": "Local-first postcard design studio for photographers and storytellers. Design print-ready postcards in your browser — no login, no uploads, no tracking.",
+  "description": "Turn your photographs into print-ready postcards, front and back. Runs in your browser; nothing is uploaded.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f1ec",
-  "theme_color": "#e2694f",
-  "categories": ["photo", "graphics", "productivity"],
+  "background_color": "#f4f1ea",
+  "theme_color": "#f4f1ea",
+  "categories": [
+    "photo",
+    "graphics",
+    "productivity"
+  ],
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

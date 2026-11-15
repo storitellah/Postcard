@@ -1,4 +1,4 @@
-const { chromium } = require('playwright-core');
+const { chromium } = require('playwright');
 const http = require('http'); const fs = require('fs'); const path = require('path');
 const { buildExifApp1 } = require('./exifbuilder.js');
 const ROOT = '/home/user/Postcard';
@@ -9,13 +9,16 @@ const results=[]; const ok=(n,p,x='')=>{results.push({n,p,x});console.log((p?'PA
 
 (async()=>{
   await new Promise(r=>server.listen(8899,r));
-  const browser = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args:['--no-sandbox'] });
+  const browser = await chromium.launch({  args:['--no-sandbox'] });
   const page = await browser.newPage({ viewport:{width:1440,height:900} });
   const errors=[]; page.on('console',m=>{if(m.type()==='error')errors.push(m.text());}); page.on('pageerror',e=>errors.push(String(e)));
   await page.goto('http://localhost:8899/index.html');
   await page.waitForTimeout(500);
 
-  // vendored libs present
+  // vendored libs are lazy-loaded now: nothing heavy at startup, loaded on first use
+  const eager = await page.evaluate(()=>({ exifr: typeof window.exifr, qrcode: typeof window.QRCode }));
+  ok('Vendored libs not loaded at startup (lazy)', eager.exifr==='undefined' && eager.qrcode==='undefined', JSON.stringify(eager));
+  await page.evaluate(async()=>{ await PostcardPress.loadQrLib(); await PostcardPress.extractExif(new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],'x.jpg',{type:'image/jpeg'})); });
   const libs = await page.evaluate(()=>({ exifr: typeof window.exifr, qrcode: typeof window.QRCode, create: !!(window.QRCode&&window.QRCode.create) }));
   ok('Vendored exifr loaded', libs.exifr==='object'||libs.exifr==='function', libs.exifr);
   ok('Vendored node-qrcode loaded (sync create)', libs.qrcode==='object'&&libs.create, `${libs.qrcode}`);

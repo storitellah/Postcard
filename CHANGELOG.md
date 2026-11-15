@@ -2,6 +2,49 @@
 
 All notable changes to Postcard Press.
 
+## [2.0.0] — 2026-11-15
+
+### Redesign
+- New look: paper, ink and one postal red instead of the frosted-glass panels. No blur effects (they were slow on phones), no emoji, plainer wording throughout.
+- Workspace is now layouts / photos / add / setup on the left, the card in the middle, and a Front / Back editing panel on the right. Export moved to its own dialog that says exactly what you'll get.
+- Phones and tablets get a bottom tab bar. Each tool opens as a sheet under the card so you can still see what you're changing; the zoom bar and filmstrip step aside while a sheet is open.
+- Two self-hosted typefaces (Instrument Serif and Anton, OFL) so cards look the same on every device.
+
+### Edit on the card (WYSIWYG)
+- Click any text on the front or back to select it; double-click (or tap twice) to type straight onto the card.
+- A floating toolbar follows the selection: size, bold, italic, alignment, font, ink colour, duplicate and hide for text; zoom, rotate, fill/whole and replace for the photo.
+- Dragging things on the back snaps to the centre, the safe area and the edges of other elements (hold Alt to place freely).
+- The layout gallery previews every layout with your own photo and words.
+- Drop a photo onto the card to swap its picture; "Replace…" does the same from the panel.
+- Enter edits the selected text, Ctrl+D duplicates, Ctrl+E opens Export. Removing a card or replacing a photo offers Undo in the notification.
+
+### New layouts
+- Front (8 new, 15 total): Night Gallery, Greetings From (big letters filled with the photo), Travel Poster, 35mm Frame, Postage Stamp, Caption Bar, Editorial, Big Greeting. Layouts with a colour band get their own colour choices.
+- Back (6 new, 11 total): Room to Write, Thank You, Invitation, Specimen Label, Bold Place Name, Plain Mail.
+- New back pieces: writing lines, handwritten note, heading, logo, divider.
+
+### Fixed
+- The diptych's "second photo" button never appeared (it checked for the wrong layout id).
+- Swipe-to-flip on phones never fired (panning reset the flag it checked).
+- Undo after removing a card, the logo or a diptych photo brought the card back without its picture.
+- Dragging a photo could pull it off the edge and show the paper underneath.
+- Empty name, website, project and copyright fields printed as "Your Name", "Your Website"… on exported files. Hints now appear on screen only.
+- An empty QR code printed as a dashed "QR" box; an empty postmark town printed as "YOUR LOCATION".
+- Full-Bleed Modern ignored its corner-type setting.
+- Contact sheets were blurry (cards rendered at 72 ppi then scaled up) and dropped cards that didn't fit a fixed 9-per-page grid.
+- Printing stretched each card to fill the paper; pages now print at true size, with sheets set to A4 or Letter.
+- The Airmail border's red/blue stripes were missing on the right and bottom edges.
+- "Show logo on the back" was suggested but impossible; there's now Add → Logo.
+- Typing a portrait custom size flipped back to landscape.
+- Removed `maximum-scale=1, user-scalable=no`, which blocked pinch-zoom for people who need it.
+
+### Faster
+- Scripts load with `defer`; the EXIF reader and QR encoder are fetched only when first needed.
+- Autosave writes each photo once and then only the small design state, instead of re-saving every photo on every change.
+- The preview reuses its canvases and caches QR codes instead of rebuilding them every frame.
+- The service worker fetches the page network-first, so a new release shows up on the next visit.
+- Measured on an emulated mid-range phone (4× CPU slowdown, 1.6 Mbps): first paint 492 ms vs 576 ms before.
+
 ## [1.4.0] — 2026-08-18
 
 ### Added — Expanded preset & template engine

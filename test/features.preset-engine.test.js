@@ -1,4 +1,4 @@
-const { chromium } = require('playwright-core');
+const { chromium } = require('playwright');
 const http=require('http'),fs=require('fs'),path=require('path');
 const ROOT='/home/user/Postcard', SAMPLES=path.join(ROOT,'samples');
 const MIME={'.html':'text/html','.css':'text/css','.js':'text/javascript','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
@@ -7,7 +7,7 @@ const results=[]; const ok=(n,p,x='')=>{results.push({n,p});console.log((p?'PASS
 const nonBlank=(cv)=>{const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;let nz=0;for(let i=0;i<d.length;i+=40){if(d[i]<248||d[i+1]<248||d[i+2]<248)nz++;}return nz;};
 (async()=>{
   await new Promise(r=>server.listen(8899,r));
-  const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+  const b=await chromium.launch({args:['--no-sandbox']});
   const page=await b.newPage({viewport:{width:1440,height:900}});
   const errors=[]; page.on('console',m=>{if(m.type()==='error')errors.push(m.text());}); page.on('pageerror',e=>errors.push(String(e)));
   await page.goto('http://localhost:8899/index.html'); await page.waitForTimeout(500);
@@ -19,8 +19,8 @@ const nonBlank=(cv)=>{const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.h
     return { fN:S.FRONT_PRESETS.length, bN:S.BACK_PRESETS.length, fOk:valid(S.FRONT_PRESETS,'front'), bOk:valid(S.BACK_PRESETS,'back'),
              fIds:S.FRONT_PRESETS.map(p=>p.id), bIds:S.BACK_PRESETS.map(p=>p.id) };
   });
-  ok('Front registry: 6 archetypes + custom, valid schema', reg.fN===7 && reg.fOk, reg.fIds.join(','));
-  ok('Back registry: 5 archetypes, valid schema', reg.bN===5 && reg.bOk, reg.bIds.join(','));
+  ok('Front registry: 14 layouts + custom, valid schema', reg.fN===15 && reg.fOk, reg.fIds.join(','));
+  ok('Back registry: 11 layouts, valid schema', reg.bN===11 && reg.bOk, reg.bIds.join(','));
 
   await page.click('#btnEmptyDemo');
   await page.waitForFunction(()=>window.PostcardPress&&PostcardPress.state.cards.length===3,null,{timeout:15000});
@@ -34,7 +34,7 @@ const nonBlank=(cv)=>{const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.h
       out[p.id]={nz, style:card.front.style}; }
     return out;
   });
-  ok('All 6+1 front presets apply & render', Object.values(frontRender).every(v=>v.nz>200), Object.keys(frontRender).map(k=>k+':'+frontRender[k].nz).join(' '));
+  ok('All front presets apply & render', Object.values(frontRender).every(v=>v.nz>200), Object.keys(frontRender).map(k=>k+':'+frontRender[k].nz).join(' '));
 
   // diptych with 2nd photo draws both panes
   const dip = await page.evaluate(()=>{

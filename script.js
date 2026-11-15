@@ -27,31 +27,46 @@ const SIZE_PRESETS = [
 ];
 
 const FONTS = {
-  sans:   '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-  serif:  '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
-  mono:   'ui-monospace, "SF Mono", Consolas, Menlo, monospace',
-  script: '"Snell Roundhand", "Segoe Script", "Bradley Hand", "Brush Script MT", "Comic Sans MS", cursive',
+  sans:      '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+  serif:     '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
+  mono:      '"Courier New", ui-monospace, "SF Mono", Consolas, Menlo, monospace',
+  script:    '"Snell Roundhand", "Segoe Script", "Bradley Hand", "Brush Script MT", "Comic Sans MS", cursive',
+  /* self-hosted (fonts/), so the same everywhere */
+  editorial: '"Instrument Serif", "Iowan Old Style", Georgia, serif',
+  display:   'Anton, Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Black", sans-serif',
 };
+/* Load a vendored script only when it is first needed (keeps first load light). */
+const scriptLoads = {};
+function loadScript(src) {
+  if (!scriptLoads[src]) {
+    scriptLoads[src] = new Promise((res) => {
+      const el = document.createElement('script');
+      el.src = src; el.async = true;
+      el.onload = () => res(true);
+      el.onerror = () => res(false);   /* app degrades gracefully without it */
+      document.head.appendChild(el);
+    });
+  }
+  return scriptLoads[src];
+}
+const loadQrLib = () => (typeof QRCode !== 'undefined' ? Promise.resolve(true) : loadScript('vendor/qrcode.bundle.js'));
+const loadExifLib = () => (typeof exifr !== 'undefined' ? Promise.resolve(true) : loadScript('vendor/exifr.lite.umd.js'));
 
-const FRONT_LAYOUTS = [
-  { id: 'full-bleed',  label: 'Full bleed' },
-  { id: 'gallery',     label: 'Gallery border' },
-  { id: 'editorial',   label: 'Editorial' },
-  { id: 'minimal',     label: 'Minimal' },
-  { id: 'wide-bottom', label: 'Wide bottom' },
-  { id: 'museum',      label: 'Museum label' },
-  { id: 'custom',      label: 'Custom' },
-];
+/* make sure the self-hosted faces (and the QR encoder, if any card uses a QR)
+   are ready before a canvas is rendered for a file */
+let fontsReady = null;
+function ensureFonts() {
+  const qr = (typeof state !== 'undefined' && state.cards.some(c => c.back.elements.some(e => e.type === 'qr' && e.visible))) ? loadQrLib() : null;
+  if (!fontsReady) {
+    fontsReady = (!document.fonts || !document.fonts.load) ? Promise.resolve() : Promise.all([
+      document.fonts.load('40px "Instrument Serif"'),
+      document.fonts.load('italic 40px "Instrument Serif"'),
+      document.fonts.load('40px Anton'),
+    ]).catch(() => {});
+  }
+  return qr ? Promise.all([fontsReady, qr]) : fontsReady;
+}
 
-const BACK_LAYOUTS = [
-  { id: 'classic',   label: 'Classic' },
-  { id: 'minimal',   label: 'Minimal' },
-  { id: 'editorial', label: 'Editorial' },
-  { id: 'gallery',   label: 'Gallery' },
-  { id: 'museum',    label: 'Museum' },
-  { id: 'story',     label: 'Story Card' },
-  { id: 'custom',    label: 'Custom' },
-];
 
 /* ═══════════════════════ Preset registries ═══════════════════════
    Declarative CardPreset objects (see README / feature spec). Front presets
@@ -62,49 +77,110 @@ const T = (v) => `<svg viewBox="0 0 40 28" xmlns="http://www.w3.org/2000/svg" fi
 
 const FRONT_PRESETS = [
   {
-    id: 'classic-gallery', name: 'Classic Gallery', category: 'front',
+    id: 'classic-gallery', tag: 'Thin white border, centred caption', name: 'Classic Gallery', category: 'front',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="5" y="5" width="30" height="14" fill="currentColor" opacity=".5"/><line x1="13" y1="22.5" x2="27" y2="22.5" stroke-width="1.6"/>'),
     front: { style: 'gallery', borderW: 0.2, borderBottom: 0, borderColor: '#ffffff', fit: 'fill',
       matHairline: true, captionStyle: 'serif', creditPlace: 'center', creditFormat: 'photo',
       show: { title: false, caption: true, website: false, project: false, copyright: false, logo: false } },
   },
   {
-    id: 'museum-broadsheet', name: 'Museum Broadsheet', category: 'front',
+    id: 'museum-broadsheet', tag: 'Framed photo over a museum label', name: 'Museum Broadsheet', category: 'front',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="4.5" y="4.5" width="31" height="13" fill="currentColor" opacity=".5"/><line x1="4.5" y1="20" x2="22" y2="20" stroke-width="2.2"/><line x1="4.5" y1="23" x2="30" y2="23" stroke-width="1"/>'),
     front: { style: 'broadsheet', borderW: 0.22, borderBottom: 0.95, borderColor: '#fbfaf7', fit: 'fill',
       matHairline: false, captionStyle: 'sans', creditPlace: 'hidden', creditFormat: 'photo',
       show: { title: true, caption: true, website: false, project: true, copyright: false, logo: false } },
   },
   {
-    id: 'fullbleed-modern', name: 'Full-Bleed Modern', category: 'front',
+    id: 'fullbleed-modern', tag: 'Edge to edge, type in the corners', name: 'Full-Bleed Modern', category: 'front',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".5"/><rect x="4" y="19" width="14" height="4.5" fill="#fff" opacity=".85"/><rect x="26" y="19" width="10" height="3" fill="#fff" opacity=".7"/>'),
     front: { style: 'modern', borderW: 0, borderBottom: 0, borderColor: '#101216', fit: 'fill',
       matHairline: false, captionStyle: 'sans', overlayCorners: true, creditPlace: 'bottom-right', creditFormat: 'photo',
       show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
   },
   {
-    id: 'split-diptych', name: 'Split Diptych', category: 'front',
+    id: 'split-diptych', tag: 'Two photos side by side', name: 'Split Diptych', category: 'front',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><rect x="4.5" y="4.5" width="14.5" height="15" fill="currentColor" opacity=".5"/><rect x="21" y="4.5" width="14.5" height="15" fill="currentColor" opacity=".35"/><line x1="20" y1="4.5" x2="20" y2="19.5"/><line x1="12" y1="23" x2="28" y2="23" stroke-width="1"/>'),
     front: { style: 'diptych', borderW: 0.14, borderBottom: 0.34, borderColor: '#ffffff', fit: 'fill',
       matHairline: false, captionStyle: 'sans', creditPlace: 'center', creditFormat: 'photo',
       show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false } },
   },
   {
-    id: 'vintage-polaroid', name: 'Vintage Polaroid', category: 'front',
+    id: 'vintage-polaroid', tag: 'Instant-film border with a note', name: 'Vintage Polaroid', category: 'front',
     thumbnailSvg: T('<rect x="4.5" y="2.5" width="31" height="23" rx="1" fill="#fff" stroke="currentColor" opacity=".9"/><rect x="7" y="4.5" width="26" height="14" fill="currentColor" opacity=".5"/><path d="M10 22h13" stroke-width="1.2" opacity=".7"/>'),
     front: { style: 'polaroid', borderW: 0.16, borderBottom: 0.9, borderColor: '#fffdf6', fit: 'fill',
       matHairline: false, captionStyle: 'script', creditPlace: 'hidden', creditFormat: 'photo',
       show: { title: false, caption: true, website: false, project: false, copyright: false, logo: false } },
   },
   {
-    id: 'fineart-mat', name: 'Fine-Art Mat', category: 'front',
+    id: 'fineart-mat', tag: 'Floating photo on an ivory mat', name: 'Fine-Art Mat', category: 'front',
     thumbnailSvg: T('<rect x="1.5" y="1.5" width="37" height="25" rx="1.5" fill="currentColor" opacity=".06"/><rect x="8" y="6" width="24" height="12" fill="currentColor" opacity=".5"/><rect x="7" y="5" width="26" height="14" stroke-width="0.6" opacity=".6"/><line x1="14" y1="22.5" x2="26" y2="22.5" stroke-width="1"/>'),
     front: { style: 'mat', borderW: 0.45, borderBottom: 0.1, borderColor: '#f4efe3', fit: 'fit',
       matHairline: true, captionStyle: 'serif', creditPlace: 'center', creditFormat: 'photo',
       show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
   },
   {
-    id: 'custom', name: 'Custom', category: 'front',
+    id: 'night-gallery', name: 'Night Gallery', category: 'front', tag: 'Black mat, white type',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".85"/><rect x="6" y="5" width="28" height="12" fill="#fff" opacity=".55"/><line x1="13" y1="21" x2="27" y2="21" stroke="#fff" stroke-width="1.4"/>'),
+    front: { style: 'gallery', borderW: 0.22, borderBottom: 0.56, borderColor: '#121212', fit: 'fill',
+      matHairline: false, captionStyle: 'serif', creditPlace: 'center', creditFormat: 'photo',
+      show: { title: true, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'greetings', name: 'Greetings From', category: 'front', tag: 'Big letters filled with your photo',
+    usesAccent: true, accents: ['#e8b931', '#d9502e', '#2f6f8f', '#f2efe6', '#1c1a17'],
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".25"/><text x="20" y="20" font-size="12" font-weight="900" text-anchor="middle" fill="currentColor" stroke="none">ABC</text>'),
+    front: { style: 'greetings', borderW: 0, borderBottom: 0, borderColor: '#1c1a17', accent: '#e8b931', fit: 'fill',
+      matHairline: false, captionStyle: 'script', creditPlace: 'bottom-right', creditFormat: 'photo', tagline: 'Greetings from',
+      show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'travel-poster', name: 'Travel Poster', category: 'front', tag: 'Photo over a bold title band',
+    usesAccent: true, accents: ['#1f4e5f', '#b5442e', '#1c1a17', '#2d5a3d', '#e3a72f'],
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".7"/><rect x="5" y="5" width="30" height="12" fill="#fff" opacity=".6"/><rect x="5" y="19" width="16" height="3.5" fill="#fff"/>'),
+    front: { style: 'travel-poster', borderW: 0.16, borderBottom: 0, borderColor: '#1f4e5f', accent: '#1f4e5f', fit: 'fill',
+      matHairline: false, captionStyle: 'sans', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: true, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'film-strip', name: '35mm Frame', category: 'front', tag: 'Sprocket holes and edge print',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1" fill="currentColor"/><g fill="#fff" opacity=".8"><rect x="5" y="4" width="2.4" height="2"/><rect x="10" y="4" width="2.4" height="2"/><rect x="15" y="4" width="2.4" height="2"/><rect x="20" y="4" width="2.4" height="2"/><rect x="25" y="4" width="2.4" height="2"/><rect x="30" y="4" width="2.4" height="2"/><rect x="5" y="22" width="2.4" height="2"/><rect x="10" y="22" width="2.4" height="2"/><rect x="15" y="22" width="2.4" height="2"/><rect x="20" y="22" width="2.4" height="2"/><rect x="25" y="22" width="2.4" height="2"/><rect x="30" y="22" width="2.4" height="2"/></g><rect x="4" y="8" width="32" height="12" fill="#fff" opacity=".55"/>'),
+    front: { style: 'film-strip', borderW: 0, borderBottom: 0, borderColor: '#0d0d0d', fit: 'fill',
+      matHairline: false, captionStyle: 'mono', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'postage-stamp', name: 'Postage Stamp', category: 'front', tag: 'Your photo as a giant stamp',
+    usesAccent: true, accents: ['#e9e3d6', '#2a4d8f', '#c23b22', '#2d5a3d', '#1c1a17'],
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".15"/><rect x="9" y="5" width="22" height="18" fill="#fff" stroke-dasharray="1.3 1"/><rect x="11.5" y="7.5" width="17" height="11" fill="currentColor" opacity=".55"/>'),
+    front: { style: 'postage-stamp', borderW: 0, borderBottom: 0, borderColor: '#e9e3d6', accent: '#e9e3d6', fit: 'fill',
+      matHairline: false, captionStyle: 'sans', creditPlace: 'hidden', creditFormat: 'photo', cancel: true,
+      show: { title: false, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'caption-bar', name: 'Caption Bar', category: 'front', tag: 'Full bleed with a solid name band',
+    usesAccent: true, accents: ['#151515', '#f4f1ea', '#c23b22', '#1f4e5f', '#5b4636'],
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".5"/><rect x="2.5" y="19.5" width="35" height="6" fill="currentColor"/><line x1="5" y1="22.5" x2="17" y2="22.5" stroke="#fff" stroke-width="1.4"/>'),
+    front: { style: 'caption-bar', borderW: 0, borderBottom: 0, borderColor: '#151515', accent: '#151515', fit: 'fill',
+      matHairline: false, captionStyle: 'serif', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: true, caption: false, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'editorial-cover', name: 'Editorial', category: 'front', tag: 'Magazine-style headline and photo',
+    usesAccent: true, accents: ['#f4efe4', '#ffffff', '#1c1a17', '#e6d9c3', '#c9d6d2'],
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".06"/><line x1="5" y1="7" x2="15" y2="7" stroke-width="2.4"/><line x1="5" y1="11" x2="13" y2="11" stroke-width="2.4"/><rect x="18" y="5" width="17" height="18" fill="currentColor" opacity=".5"/><line x1="5" y1="21" x2="13" y2="21" stroke-width=".8"/>'),
+    front: { style: 'editorial-cover', borderW: 0.2, borderBottom: 0, borderColor: '#f4efe4', accent: '#f4efe4', fit: 'fill',
+      matHairline: false, captionStyle: 'serif', creditPlace: 'hidden', creditFormat: 'photo',
+      show: { title: true, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'headline', name: 'Big Greeting', category: 'front', tag: 'Large words across the middle',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".5"/><line x1="9" y1="13" x2="31" y2="13" stroke="#fff" stroke-width="2.6"/><line x1="14" y1="17.5" x2="26" y2="17.5" stroke="#fff" stroke-width=".9"/>'),
+    front: { style: 'headline', borderW: 0, borderBottom: 0, borderColor: '#111111', fit: 'fill',
+      matHairline: false, captionStyle: 'serif', creditPlace: 'bottom-right', creditFormat: 'photo',
+      show: { title: true, caption: true, website: false, project: false, copyright: false, logo: false } },
+  },
+  {
+    id: 'custom', name: 'Custom', category: 'front', tag: 'Your own border settings',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".08"/><path d="M20 8v12M14 14h12" stroke-width="1.6" opacity=".6"/>'),
     front: null,   /* keeps current front values */
   },
@@ -127,14 +203,26 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const deepClone = (o) => JSON.parse(JSON.stringify(o));
-const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const debounce = (fn, ms) => {
+  let t = null, args = [];
+  const d = (...a) => { args = a; clearTimeout(t); t = setTimeout(() => { t = null; fn(...args); }, ms); };
+  d.flush = () => { if (t) { clearTimeout(t); t = null; fn(...args); } };
+  return d;
+};
 
-function toast(msg, ms = 2600) {
+function toast(msg, ms = 2600, action = null) {
   const el = $('#toast');
   el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-act'; b.textContent = action.label;
+    b.addEventListener('click', () => { el.hidden = true; action.fn(); });
+    el.append(' ', b);
+    el.style.pointerEvents = 'auto';
+  } else el.style.pointerEvents = 'none';
   el.hidden = false;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.hidden = true; }, ms);
+  toast._t = setTimeout(() => { el.hidden = true; }, action ? Math.max(ms, 5000) : ms);
 }
 
 async function showProgress(text) {
@@ -404,9 +492,20 @@ const QR = (() => {
 /* Build a QR module matrix synchronously. Prefers the vendored node-qrcode
    (all versions, EC levels) and falls back to the built-in encoder. Returns
    { size, get(row,col) } or null if the text is empty / can't be encoded. */
+const qrCache = new Map();
 function qrMatrix(text) {
   const content = (text || '').trim();
   if (!content) return null;
+  const full = typeof QRCode !== 'undefined';
+  const ck = (full ? 'v:' : 'b:') + content;
+  if (qrCache.has(ck)) return qrCache.get(ck);
+  if (!full) loadQrLib().then(ok => { if (ok) { qrCache.clear(); view.needsRender = true; } });
+  const m = qrMatrixUncached(content);
+  if (qrCache.size > 50) qrCache.clear();
+  qrCache.set(ck, m);
+  return m;
+}
+function qrMatrixUncached(content) {
   try {
     if (typeof QRCode !== 'undefined' && QRCode.create) {
       const qr = QRCode.create(content, { errorCorrectionLevel: 'M' });
@@ -541,7 +640,8 @@ const EL_LABELS = {
   address: 'Address area', stamp: 'Stamp', divider: 'Divider', qr: 'QR code', logo: 'Logo',
   text: 'Custom text', title: 'Title', postmark: 'Postmark',
   box: 'Labelled box', airmail: 'Airmail border', exiftable: 'EXIF table', coords: 'Coordinates',
-  bio: 'Bio', contact: 'Contact', cta: 'Headline / CTA', edition: 'Edition',
+  bio: 'Bio', contact: 'Contact', cta: 'Headline', edition: 'Edition',
+  lines: 'Writing lines', camera: 'Camera', rsvp: 'RSVP line', placeName: 'Place name',
 };
 
 function makeBackLayout(layoutId) {
@@ -608,7 +708,7 @@ function makeBackLayout(layoutId) {
 /* ── Declarative back presets (authentic postal geometries) ── */
 const BACK_PRESETS = [
   {
-    id: 'classic-universal', name: 'Classic Universal', category: 'back',
+    id: 'classic-universal', tag: 'Message left, address right', name: 'Classic Universal', category: 'back',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="20" y1="4" x2="20" y2="24"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/><line x1="23" y1="15" x2="36" y2="15" stroke-width="0.8"/><line x1="23" y1="18.5" x2="36" y2="18.5" stroke-width="0.8"/><line x1="23" y1="22" x2="36" y2="22" stroke-width="0.8"/><line x1="4" y1="7" x2="16" y2="7" stroke-width="0.8" opacity=".6"/>'),
     elements: [
       { type: 'divider', x: 0.5, y: 0.07, w: 0.0035, h: 0.86 },
@@ -621,7 +721,7 @@ const BACK_PRESETS = [
     ],
   },
   {
-    id: 'field-note', name: 'Field Note / Dispatch', category: 'back',
+    id: 'field-note', tag: 'Story column with camera details', name: 'Field Note', category: 'back',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="4" y1="6" x2="18" y2="6" stroke-width="0.8"/><line x1="4" y1="9" x2="18" y2="9" stroke-width="0.6" opacity=".6"/><line x1="4" y1="11.5" x2="18" y2="11.5" stroke-width="0.6" opacity=".6"/><line x1="4" y1="14" x2="16" y2="14" stroke-width="0.6" opacity=".6"/><rect x="22" y="5" width="14" height="8" stroke-width="0.7" opacity=".7"/><rect x="22" y="17" width="6" height="6" stroke-dasharray="1.2 1"/>'),
     elements: [
       { type: 'text', bind: 'caption', x: 0.05, y: 0.06, w: 0.42, h: 0.07, size: 10, weight: 'bold' },
@@ -634,7 +734,7 @@ const BACK_PRESETS = [
     ],
   },
   {
-    id: 'art-print', name: 'Minimalist Art Print', category: 'back',
+    id: 'art-print', tag: 'Centred title, bio and edition', name: 'Art Print', category: 'back',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="12" y1="6" x2="28" y2="6" stroke-width="1.4"/><line x1="14" y1="12" x2="26" y2="12" stroke-width="0.6" opacity=".6"/><line x1="14" y1="14.5" x2="26" y2="14.5" stroke-width="0.6" opacity=".6"/><rect x="13" y="18.5" width="14" height="4" stroke-width="0.7" opacity=".7"/>'),
     elements: [
       { type: 'text', bind: 'project', x: 0.1, y: 0.07, w: 0.8, h: 0.06, size: 8, weight: 'bold', align: 'center', letterSpacing: 0.16 },
@@ -645,7 +745,7 @@ const BACK_PRESETS = [
     ],
   },
   {
-    id: 'airmail', name: 'Vintage Airmail', category: 'back',
+    id: 'airmail', tag: 'Striped border and a postmark', name: 'Airmail', category: 'back',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="3.5" y="3.5" width="33" height="21" stroke-dasharray="2 1.4" stroke-width="1"/><circle cx="30" cy="9" r="4" stroke-width="0.9"/><line x1="6" y1="16" x2="22" y2="16" stroke-width="0.7" opacity=".6"/><line x1="6" y1="19" x2="22" y2="19" stroke-width="0.7" opacity=".6"/>'),
     elements: [
       { type: 'airmail', x: 0.012, y: 0.02, w: 0.976, h: 0.96 },
@@ -657,7 +757,7 @@ const BACK_PRESETS = [
     ],
   },
   {
-    id: 'direct-mailer', name: 'Direct Mailer / Promo', category: 'back',
+    id: 'direct-mailer', tag: 'Headline, QR and contact block', name: 'Promo Mailer', category: 'back',
     thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="4" y="4.5" width="22" height="4" fill="currentColor" opacity=".55"/><line x1="4" y1="11" x2="24" y2="11" stroke-width="0.6" opacity=".6"/><line x1="4" y1="13.5" x2="24" y2="13.5" stroke-width="0.6" opacity=".6"/><rect x="29" y="4.5" width="7" height="7" stroke-dasharray="1.2 1"/><rect x="4" y="20" width="16" height="3.5" stroke-width="0.7" opacity=".5"/>'),
     elements: [
       { type: 'text', bind: 'cta', x: 0.05, y: 0.06, w: 0.62, h: 0.12, size: 15, weight: 'bold', color: '#1a1a1a' },
@@ -666,6 +766,81 @@ const BACK_PRESETS = [
       { type: 'qr', x: 0.72, y: 0.06, w: 0.22, h: 0.22, qrDark: '#1a1a1a', qrLight: '#ffffff' },
       { type: 'text', bind: 'website', x: 0.72, y: 0.3, w: 0.22, h: 0.05, size: 7, align: 'center', color: '#7a7a7a' },
       { type: 'box', label: 'BARCODE CLEARANCE', x: 0.68, y: 0.78, w: 0.28, h: 0.14, size: 6, align: 'center', dashed: true },
+    ],
+  },
+  {
+    id: 'handwritten', name: 'Room to Write', category: 'back', tag: 'Ruled lines for a handwritten note',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="20" y1="4" x2="20" y2="24"/><g stroke-width=".6" opacity=".6"><line x1="4" y1="9" x2="18" y2="9"/><line x1="4" y1="12.5" x2="18" y2="12.5"/><line x1="4" y1="16" x2="18" y2="16"/><line x1="4" y1="19.5" x2="18" y2="19.5"/><line x1="23" y1="15" x2="36" y2="15"/><line x1="23" y1="18.5" x2="36" y2="18.5"/><line x1="23" y1="22" x2="36" y2="22"/></g><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/>'),
+    elements: [
+      { type: 'text', bind: 'caption', x: 0.05, y: 0.06, w: 0.4, h: 0.08, size: 13, font: 'editorial', style: 'italic' },
+      { type: 'lines', x: 0.05, y: 0.2, w: 0.41, h: 0.62, lines: 7, color: '#c9c3b6' },
+      { type: 'text', bind: 'credit', x: 0.05, y: 0.88, w: 0.41, h: 0.05, size: 6.5, color: '#8a8a8a' },
+      { type: 'divider', x: 0.5, y: 0.07, w: 0.0035, h: 0.86 },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'address', x: 0.55, y: 0.44, w: 0.4, h: 0.4 },
+    ],
+  },
+  {
+    id: 'thank-you', name: 'Thank You', category: 'back', tag: 'Script greeting, space for a note',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><path d="M5 9c2-3 4 2 6-1s3 2 5 0" stroke-width="1.3"/><g stroke-width=".6" opacity=".6"><line x1="4" y1="14" x2="18" y2="14"/><line x1="4" y1="17.5" x2="18" y2="17.5"/><line x1="4" y1="21" x2="18" y2="21"/></g><line x1="20" y1="4" x2="20" y2="24"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/>'),
+    elements: [
+      { type: 'text', text: 'Thank you', x: 0.05, y: 0.05, w: 0.42, h: 0.2, size: 28, font: 'editorial', style: 'italic', color: '#2a4d8f', lineHeight: 1.1 },
+      { type: 'text', bind: 'story', x: 0.05, y: 0.3, w: 0.41, h: 0.36, size: 8.5, font: 'serif', lineHeight: 1.55 },
+      { type: 'lines', x: 0.05, y: 0.68, w: 0.41, h: 0.18, lines: 2, color: '#c9c3b6' },
+      { type: 'text', bind: 'website', x: 0.05, y: 0.9, w: 0.41, h: 0.05, size: 6.5, color: '#8a8a8a' },
+      { type: 'divider', x: 0.5, y: 0.07, w: 0.0035, h: 0.86 },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'address', x: 0.55, y: 0.44, w: 0.4, h: 0.4 },
+    ],
+  },
+  {
+    id: 'event-invite', name: 'Invitation', category: 'back', tag: 'Event name, when, where, RSVP',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="14" y1="6" x2="26" y2="6" stroke-width=".7"/><line x1="10" y1="10" x2="30" y2="10" stroke-width="2.2"/><rect x="7" y="14" width="12" height="5" stroke-width=".7"/><rect x="21" y="14" width="12" height="5" stroke-width=".7"/><line x1="14" y1="22.5" x2="26" y2="22.5" stroke-width=".7"/>'),
+    elements: [
+      { type: 'text', bind: 'project', x: 0.1, y: 0.07, w: 0.8, h: 0.06, size: 7, weight: 'bold', align: 'center', letterSpacing: 0.18, color: '#7a7a7a' },
+      { type: 'text', bind: 'title', x: 0.08, y: 0.15, w: 0.84, h: 0.17, size: 26, font: 'editorial', align: 'center', lineHeight: 1.05 },
+      { type: 'text', bind: 'story', x: 0.16, y: 0.35, w: 0.68, h: 0.18, size: 8.5, font: 'serif', align: 'center', lineHeight: 1.5, color: '#4a4a4a' },
+      { type: 'box', label: 'WHEN', bind: 'date', x: 0.16, y: 0.58, w: 0.32, h: 0.17, size: 9, font: 'serif' },
+      { type: 'box', label: 'WHERE', bind: 'location', x: 0.52, y: 0.58, w: 0.32, h: 0.17, size: 9, font: 'serif' },
+      { type: 'text', bind: 'rsvp', x: 0.1, y: 0.84, w: 0.8, h: 0.06, size: 7.5, align: 'center', letterSpacing: 0.06 },
+    ],
+  },
+  {
+    id: 'specimen', name: 'Specimen Label', category: 'back', tag: 'Typewritten field-record table',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="4" y="4.5" width="15" height="19" stroke-width=".8"/><g stroke-width=".5" opacity=".7"><line x1="4" y1="9" x2="19" y2="9"/><line x1="4" y1="13" x2="19" y2="13"/><line x1="4" y1="17" x2="19" y2="17"/></g><line x1="22" y1="15" x2="36" y2="15" stroke-width=".7"/><line x1="22" y1="18.5" x2="36" y2="18.5" stroke-width=".7"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/>'),
+    elements: [
+      { type: 'text', text: 'FIELD RECORD', x: 0.05, y: 0.06, w: 0.42, h: 0.06, size: 7, font: 'mono', weight: 'bold', letterSpacing: 0.2 },
+      { type: 'box', label: 'SUBJECT', bind: 'caption', x: 0.05, y: 0.14, w: 0.42, h: 0.13, size: 8, font: 'mono' },
+      { type: 'box', label: 'LOCALITY', bind: 'location', x: 0.05, y: 0.27, w: 0.42, h: 0.13, size: 8, font: 'mono' },
+      { type: 'box', label: 'DATE', bind: 'date', x: 0.05, y: 0.4, w: 0.21, h: 0.13, size: 8, font: 'mono' },
+      { type: 'box', label: 'CAMERA', bind: 'camera', x: 0.26, y: 0.4, w: 0.21, h: 0.13, size: 7, font: 'mono' },
+      { type: 'box', label: 'NOTES', bind: 'story', x: 0.05, y: 0.53, w: 0.42, h: 0.33, size: 7, font: 'mono' },
+      { type: 'text', bind: 'credit', x: 0.05, y: 0.89, w: 0.42, h: 0.05, size: 6.5, font: 'mono', color: '#7a7a7a' },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'address', x: 0.55, y: 0.44, w: 0.4, h: 0.4 },
+    ],
+  },
+  {
+    id: 'modern-postal', name: 'Bold Place Name', category: 'back', tag: 'Poster type with a heavy rule',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><rect x="4" y="5" width="13" height="5" fill="currentColor" opacity=".8"/><g stroke-width=".6" opacity=".6"><line x1="4" y1="13" x2="17" y2="13"/><line x1="4" y1="15.5" x2="17" y2="15.5"/><line x1="4" y1="18" x2="15" y2="18"/></g><line x1="20" y1="4" x2="20" y2="24" stroke-width="2"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/><line x1="23" y1="18.5" x2="36" y2="18.5" stroke-width=".7"/>'),
+    elements: [
+      { type: 'text', bind: 'placeName', x: 0.05, y: 0.05, w: 0.42, h: 0.2, size: 30, font: 'display', lineHeight: 1, color: '#1c1a17' },
+      { type: 'text', bind: 'date', x: 0.05, y: 0.27, w: 0.42, h: 0.05, size: 7, weight: 'bold', letterSpacing: 0.14, color: '#c23b22' },
+      { type: 'text', bind: 'story', x: 0.05, y: 0.36, w: 0.41, h: 0.46, size: 8.5, lineHeight: 1.55 },
+      { type: 'text', bind: 'credit', x: 0.05, y: 0.88, w: 0.41, h: 0.05, size: 6.5, color: '#7a7a7a' },
+      { type: 'divider', x: 0.5, y: 0.06, w: 0.009, h: 0.88, color: '#1c1a17' },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'address', x: 0.56, y: 0.44, w: 0.39, h: 0.4 },
+    ],
+  },
+  {
+    id: 'blank-mail', name: 'Plain Mail', category: 'back', tag: 'Just the essentials, write by hand',
+    thumbnailSvg: T('<rect x="2.5" y="2.5" width="35" height="23" rx="1.5" fill="currentColor" opacity=".05"/><line x1="20" y1="6" x2="20" y2="22" stroke-width=".7"/><rect x="30" y="4.5" width="6" height="5" stroke-dasharray="1.4 1"/><g stroke-width=".7"><line x1="23" y1="15" x2="36" y2="15"/><line x1="23" y1="18.5" x2="36" y2="18.5"/><line x1="23" y1="22" x2="36" y2="22"/></g>'),
+    elements: [
+      { type: 'divider', x: 0.5, y: 0.12, w: 0.0025, h: 0.76 },
+      { type: 'stamp', x: 0.855, y: 0.05, w: 0.115, h: 0.22 },
+      { type: 'address', x: 0.55, y: 0.46, w: 0.4, h: 0.36, showLabel: false },
+      { type: 'text', bind: 'credit', x: 0.05, y: 0.9, w: 0.4, h: 0.05, size: 6, color: '#9a9a9a' },
     ],
   },
 ];
@@ -800,9 +975,24 @@ async function idbGet(key) {
   } catch (e) { return null; }
 }
 
+/* Images that something still points at. Images are never deleted while
+   editing (so undo can bring a card back with its photo); unused ones are
+   simply left out when the project is saved. */
+function referencedImageIds() {
+  const ids = new Set();
+  const add = (id) => { if (id) ids.add(id); };
+  const scan = (cards) => cards.forEach(c => {
+    add(c.imageId); add(c.imageId2);
+    (c.back.elements || []).forEach(e => add(e.stampImageId));
+  });
+  scan(state.cards);
+  add(state.global.logoId);
+  return ids;
+}
 function serializeProject() {
   const images = {};
-  for (const [id, im] of imageStore) images[id] = { dataURL: im.dataURL, name: im.name };
+  const used = referencedImageIds();
+  for (const [id, im] of imageStore) if (used.has(id)) images[id] = { dataURL: im.dataURL, name: im.name };
   return {
     app: 'postcard-press', version: 1, savedAt: new Date().toISOString(),
     state: JSON.parse(snapshot()), images,
@@ -849,7 +1039,36 @@ async function restoreProjectFile(file) {
   }
 }
 
-const autosaveSoon = debounce(() => { idbSet('autosave', serializeProject()); }, 1200);
+/* Autosave writes each photo once under its own key and then only the
+   (small) design state on every change — much cheaper than re-saving every
+   photo each time. */
+const savedImageKeys = new Set();
+async function autosaveNow() {
+  const used = referencedImageIds();
+  for (const id of used) {
+    if (savedImageKeys.has(id) || !imageStore.has(id)) continue;
+    const im = imageStore.get(id);
+    await idbSet('img:' + id, { dataURL: im.dataURL, name: im.name });
+    savedImageKeys.add(id);
+  }
+  await idbSet('autosave', { app: 'postcard-press', version: 2, savedAt: new Date().toISOString(), state: JSON.parse(snapshot()), imageIds: [...used] });
+}
+const autosaveSoon = debounce(() => { autosaveNow(); }, 1000);
+async function loadAutosave() {
+  const saved = await idbGet('autosave');
+  if (!saved || !saved.state || !saved.state.cards || !saved.state.cards.length) return false;
+  if (saved.version === 2) {
+    const images = {};
+    for (const id of saved.imageIds || []) {
+      const im = await idbGet('img:' + id);
+      if (im) { images[id] = im; savedImageKeys.add(id); }
+    }
+    await loadProjectData({ app: 'postcard-press', state: saved.state, images });
+  } else {
+    await loadProjectData(saved);   /* older single-blob autosave */
+  }
+  return true;
+}
 
 /* ═══════════════════════ Text helpers ═══════════════════════ */
 function fontStr(sizePx, font = 'sans', style = 'normal', weight = 'normal') {
@@ -893,26 +1112,34 @@ function luminance(hex) {
   return (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255;
 }
 
-/* resolved text values with universal placeholders */
+/* True while a card is being drawn for a file/print. Placeholder words
+   ("Your Name", "Your Website"…) are shown on screen as hints but must never
+   end up on a printed card. */
+let EXPORTING = false;
+
+/* resolved text values; empty fields fall back to a hint on screen only */
+const G_HINT = { photographer: 'Your Name', project: 'Project Name', website: 'Your Website', email: 'Your Email' };
+function hasG(key) { return !!(state.global[key] || '').trim(); }
 function gv(key) {
   const g = state.global;
-  switch (key) {
-    case 'photographer': return g.photographer.trim() || 'Your Name';
-    case 'project':      return g.project.trim() || 'Project Name';
-    case 'website':      return g.website.trim() || 'Your Website';
-    case 'email':        return g.email.trim() || 'Your Email';
-    case 'copyright':    return g.copyright.trim() || `© ${new Date().getFullYear()} ${gv('photographer')}`;
+  if (key === 'copyright') {
+    if (g.copyright.trim()) return g.copyright.trim();
+    if (!hasG('photographer') && EXPORTING) return '';
+    return `© ${new Date().getFullYear()} ${gv('photographer')}`;
   }
-  return '';
+  const v = (g[key] || '').trim();
+  if (v) return v;
+  return EXPORTING ? '' : (G_HINT[key] || '');
 }
 function creditText(card) {
   const f = card.front;
+  if (f.creditFormat === 'custom' && f.creditCustom.trim()) return applyTokens(f.creditCustom.trim(), card);
+  if (!hasG('photographer') && EXPORTING) return '';
   const name = gv('photographer');
   switch (f.creditFormat) {
     case 'photograph': return `Photograph by ${name}`;
     case 'copy':       return `© ${name}`;
     case 'studio':     return `${name} / Studio`;
-    case 'custom':     return f.creditCustom.trim() || `Photo: ${name}`;
     default:           return `Photo: ${name}`;
   }
 }
@@ -928,6 +1155,9 @@ function bindText(card, bind) {
     case 'date':      return m.date.trim();
     case 'location':  return m.location.trim();
     case 'title':     return m.title.trim();
+    case 'camera':    return (m.camera || '').trim() || (card.exif && card.exif.camera) || '';
+    case 'placeName': return (m.location.trim() || m.title.trim()).toUpperCase();
+    case 'rsvp':      return hasG('website') || hasG('email') ? `RSVP  ${[state.global.email.trim(), state.global.website.trim()].filter(Boolean).join('  ·  ')}` : '';
     case 'meta': {
       const bits = [m.location.trim(), m.date.trim(), m.edition.trim(), m.camera.trim()].filter(Boolean);
       return bits.join('  ·  ');
@@ -945,7 +1175,7 @@ function bindText(card, bind) {
       return rows.map(([k, v]) => `${k.padEnd(pad)}  ${v}`).join('\n');
     }
     case 'coords':  return m.location.trim() || '';
-    case 'bio':     return (gv('photographer') !== 'Your Name' || m.story.trim()) ? `${gv('photographer')}\n${gv('website')}` : '';
+    case 'bio':     return (hasG('photographer') || m.story.trim()) ? [gv('photographer'), gv('website')].filter(Boolean).join('\n') : '';
     case 'contact': {
       const bits = [gv('photographer'), gv('website'), gv('email')].filter(v => v && !/^Your /.test(v));
       return bits.join('\n');
@@ -955,6 +1185,10 @@ function bindText(card, bind) {
   }
   return '';
 }
+function bindTextReal(card, bind) {
+  const prev = EXPORTING; EXPORTING = true;
+  try { return bindText(card, bind); } finally { EXPORTING = prev; }
+}
 const BIND_PLACEHOLDER = {
   caption: 'Photo Title', story: 'The story behind this photograph…',
   date: '2026', location: 'Your Location', meta: 'Your Location · 2026', title: 'Photo Title',
@@ -962,6 +1196,7 @@ const BIND_PLACEHOLDER = {
   coords: 'Your Location', bio: 'Photographer Name\nyour-website.com',
   contact: 'Your Name\nyour-website.com\nyour@email.com', cta: 'Your Headline Here',
   edition: 'Edition ____ of ____',
+  camera: 'Camera / film', placeName: 'YOUR PLACE', rsvp: 'RSVP  you@example.com',
 };
 
 /* ═══════════════════════ EXIF metadata ═══════════════════════
@@ -999,6 +1234,7 @@ function buildSettings(e) {
 /* Read EXIF from a File; resolves to a normalized object (or null). */
 async function extractExif(file) {
   try {
+    await loadExifLib();
     if (typeof exifr === 'undefined' || !exifr.parse) return null;
     /* The lite build only parses TIFF/EXIF/GPS (no IPTC/XMP/ICC), so a plain
        parse is already fast; the pick/translateValues options are avoided
@@ -1104,7 +1340,8 @@ function frontStyle(f) { return f.style || FRONT_LAYOUT_ALIAS[f.layout] || 'clas
    the single-photo path and both diptych panes. */
 function drawPhotoInto(ctx, im, o) {
   const { x, y, w, h, fit, tx, adjust, ppi } = o;
-  if (w < 2 || h < 2) return;
+  const out = { ox: 0, oy: 0 };
+  if (w < 2 || h < 2) return out;
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   if (im) {
@@ -1115,7 +1352,12 @@ function drawPhotoInto(ctx, im, o) {
     const s = base * (tx.zoom || 1);
     const dw = iw * s, dh = ih * s;
     const ox = (dw - w) / 2, oy = (dh - h) / 2;
-    const cx = x + w / 2 + (tx.x || 0) * Math.max(ox, w * 0.5), cy = y + h / 2 + (tx.y || 0) * Math.max(oy, h * 0.5);
+    /* pan only within the photo's overflow, so dragging can never pull
+       the picture away from an edge and reveal the paper underneath */
+    const cx = x + w / 2 + (tx.x || 0) * Math.max(ox, 0), cy = y + h / 2 + (tx.y || 0) * Math.max(oy, 0);
+    out.ox = Math.max(ox, 0); out.oy = Math.max(oy, 0);
+    const vx = Math.max(x, cx - dw / 2), vy = Math.max(y, cy - dh / 2);
+    out.vis = { x: vx, y: vy, w: Math.min(x + w, cx + dw / 2) - vx, h: Math.min(y + h, cy + dh / 2) - vy };
     const rw = sideways ? dh : dw, rh = sideways ? dw : dh;
     ctx.save();
     ctx.filter = adjustFilter(adjust);
@@ -1140,6 +1382,7 @@ function drawPhotoInto(ctx, im, o) {
     ctx.fillText(o.label || 'Add a photograph', x + w / 2, y + h / 2);
   }
   ctx.restore();
+  return out;
 }
 
 /* subtle blind-deboss hairline (fine-art mat) around a rect */
@@ -1153,12 +1396,69 @@ function drawMatHairline(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-/* ═══════════════════════ Front renderer ═══════════════════════ */
+/* ═══════════════════════ Front renderer ═══════════════════════
+   opts.hits (preview only) collects the on-card position of every editable
+   piece of text, in inches from the card's top-left (bleed included), so the
+   preview can offer click-to-edit right on the card. */
+const photoOverflow = new WeakMap();   /* front → {x, y} pannable overflow in inches */
+
+/* draw one line/paragraph of front text, record its hit box, return its height */
+function frontText(ctx, R, key, text, x, y, o) {
+  const { ppi, hit } = R;
+  const sizePx = o.size;
+  ctx.save();
+  ctx.font = fontStr(sizePx, o.font, o.style, o.weight);
+  if (o.ls) ctx.letterSpacing = `${o.ls * sizePx}px`;
+  ctx.fillStyle = o.color;
+  if (o.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = sizePx * 0.3; }
+  const lh = sizePx * (o.lh || 1.25);
+  const maxW = o.maxW || 1e6;
+  const lines = o.wrap ? wrapLines(ctx, text, maxW) : [text];
+  const maxLines = o.maxLines || 99;
+  const shown = lines.slice(0, maxLines);
+  ctx.textBaseline = 'top';
+  ctx.textAlign = o.align || 'left';
+  let widest = 0;
+  shown.forEach((ln, i) => { ctx.fillText(ln, x, y + i * lh); widest = Math.max(widest, ctx.measureText(ln).width); });
+  ctx.restore();
+  const h = shown.length * lh;
+  const bw = o.wrap ? maxW : widest;
+  const bx = o.align === 'center' ? x - bw / 2 : o.align === 'right' ? x - bw : x;
+  if (hit && key) hit(key, bx, y, Math.max(bw, sizePx * 2), h, { font: o.font, style: o.style || 'normal', weight: o.weight || 'normal', sizeIn: sizePx / ppi, align: o.align || 'left', color: o.color, lh: o.lh || 1.25 });
+  return h;
+}
+/* largest size (px) at which `text` fits maxW, capped at sizePx */
+function fitSize(ctx, text, sizePx, maxW, font, style, weight, ls = 0) {
+  ctx.save();
+  ctx.font = fontStr(sizePx, font, style, weight);
+  if (ls) ctx.letterSpacing = `${ls * sizePx}px`;
+  const w = ctx.measureText(text).width;
+  ctx.restore();
+  return w > maxW ? sizePx * maxW / w : sizePx;
+}
+function inkFor(bg) { return luminance(bg) > 0.55 ? '#1c1a17' : '#f7f4ee'; }
+function softInkFor(bg) { return luminance(bg) > 0.55 ? 'rgba(28,26,23,0.62)' : 'rgba(247,244,238,0.72)'; }
+function pt(v, ppi) { return v / 72 * ppi; }
+/* placeholder only on screen */
+function orHint(v, hint) { return v || (EXPORTING ? '' : hint); }
+
 function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const { w: tw, h: th } = trimSize();
   const W = (tw + bleed * 2) * ppi, H = (th + bleed * 2) * ppi;
   const f = card.front;
   const b = bleed * ppi;
+  const hits = opts.hits || null;
+  const R = {
+    ppi, bleed, W, H, b, tw, th, opts, safe: SAFE_IN * ppi,
+    hit: hits ? (key, x, y, w, h, extra) => hits.push({ key, x: x / ppi, y: y / ppi, w: w / ppi, h: h / ppi, ...extra }) : null,
+  };
+  const style = frontStyle(f);
+  const special = FRONT_RENDERERS[style];
+  if (special) {
+    special(ctx, card, R);
+    if (f.show.logo) drawFrontLogo(ctx, card, R, b + R.safe, true);
+    return;
+  }
 
   /* border / mat colour under everything */
   ctx.fillStyle = f.borderColor || '#ffffff';
@@ -1172,8 +1472,7 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   const pw = noBorder ? W : W - 2 * (b + bw);
   const ph = noBorder ? H : H - (b + bw) - (b + bb);
 
-  /* aspect-ratio crop snapping: shrink the photo window to a target ratio
-     inside the frame, letterboxed with the border colour (already painted) */
+  /* aspect-ratio crop snapping */
   let wx = px, wy = py, ww = pw, wh = ph;
   if (f.cropAspect && pw > 2 && ph > 2) {
     if (pw / ph > f.cropAspect) { ww = ph * f.cropAspect; wx = px + (pw - ww) / 2; }
@@ -1181,60 +1480,84 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   }
 
   const im = imageStore.get(card.imageId);
-  const style = frontStyle(f);
   if (style === 'split-diptych' && ww > 2 && wh > 2) {
-    /* two comparative photos with a border-colour gap as the divider */
     const portrait = wh > ww;
     const gap = Math.max(3, f.borderW * ppi * 0.7);
     const im2 = card.imageId2 ? imageStore.get(card.imageId2) : null;
     let a, bR;
     if (portrait) { const hh = (wh - gap) / 2; a = [wx, wy, ww, hh]; bR = [wx, wy + hh + gap, ww, hh]; }
     else { const half = (ww - gap) / 2; a = [wx, wy, half, wh]; bR = [wx + half + gap, wy, half, wh]; }
-    drawPhotoInto(ctx, im, { x: a[0], y: a[1], w: a[2], h: a[3], fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
+    const ov = drawPhotoInto(ctx, im, { x: a[0], y: a[1], w: a[2], h: a[3], fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
+    photoOverflow.set(f, { x: ov.ox / ppi, y: ov.oy / ppi });
     drawPhotoInto(ctx, im2, { x: bR[0], y: bR[1], w: bR[2], h: bR[3], fit: f.fit, tx: { x: 0, y: 0, zoom: 1, rot: 0 }, adjust: f.adjust, ppi, label: 'Add 2nd photo' });
   } else {
-    drawPhotoInto(ctx, im, { x: wx, y: wy, w: ww, h: wh, fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
-    if (f.matHairline && ww > 2 && wh > 2) drawMatHairline(ctx, wx, wy, ww, wh);
+    const ov = drawPhotoInto(ctx, im, { x: wx, y: wy, w: ww, h: wh, fit: f.fit, tx: f.tx, adjust: f.adjust, ppi });
+    photoOverflow.set(f, { x: ov.ox / ppi, y: ov.oy / ppi });
+    if (f.matHairline && ww > 2 && wh > 2) {
+      const v = ov.vis && ov.vis.w > 2 && ov.vis.h > 2 ? ov.vis : { x: wx, y: wy, w: ww, h: wh };
+      drawMatHairline(ctx, v.x, v.y, v.w, v.h);
+    }
   }
+  if (R.hit) R.hit('photo', wx, wy, ww, wh);
 
   /* ── text on front ── */
-  const dark = luminance(f.borderColor) > 0.5;
-  const inkOnBorder = dark ? '#232323' : '#f4f4f2';
-  const softOnBorder = dark ? '#8a8a86' : 'rgba(244,244,242,0.75)';
+  const light = luminance(f.borderColor) > 0.5;
+  const inkOnBorder = light ? '#232323' : '#f4f4f2';
+  const softOnBorder = light ? '#8a8a86' : 'rgba(244,244,242,0.72)';
   const leftAlign = style === 'museum-broadsheet';
   const m = card.meta;
-  const safe = SAFE_IN * ppi;
+  const safe = R.safe;
 
-  const bottomZoneTop = py + ph;              /* top of bottom border area */
-  const bottomZoneH = H - b - bottomZoneTop;  /* height inside trim */
+  /* Full-Bleed Modern: type sits in the corners over a soft scrim */
+  if (f.overlayCorners && style === 'fullbleed-modern') {
+    const g = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    g.addColorStop(0, 'rgba(8,10,14,0)'); g.addColorStop(1, 'rgba(8,10,14,0.55)');
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.55, W, H * 0.45);
+    const x0 = b + safe, bottom = H - b - safe;
+    let y = bottom;
+    const cap = f.show.caption ? orHint(applyTokens(m.caption.trim(), card), 'A short caption') : '';
+    const title = f.show.title ? orHint(applyTokens(m.title.trim(), card), 'Photo Title') : '';
+    const capPx = pt(7.5, ppi), titlePx = pt(17, ppi);
+    if (cap) { y -= capPx * 1.3; frontText(ctx, R, 'caption', cap, x0, y, { size: capPx, font: 'sans', color: 'rgba(255,255,255,0.88)', maxW: W * 0.55, shadow: true }); }
+    if (title) { y -= titlePx * 1.15; frontText(ctx, R, 'title', title, x0, y, { size: fitSize(ctx, title, titlePx, W * 0.6, 'editorial'), font: 'editorial', color: '#fff', shadow: true, lh: 1.1 }); }
+    drawFrontCredit(ctx, card, R, W - b - safe, bottom - pt(6.2, ppi), 'right', 'rgba(255,255,255,0.9)', true);
+    if (f.show.logo) drawFrontLogo(ctx, card, R, b + safe, true);
+    return;
+  }
+
+  const bottomZoneTop = py + ph;
+  const bottomZoneH = H - b - bottomZoneTop;
   const hasZone = bottomZoneH > 0.2 * ppi;
   const zx = b + Math.max(bw, safe * 0.8);
   const zw = W - 2 * zx;
 
   const big = style === 'museum-broadsheet';
-  const capFont = f.captionStyle === 'script' ? 'script' : f.captionStyle === 'sans' ? 'sans' : 'serif';
+  const capFont = f.captionStyle === 'script' ? 'script' : f.captionStyle === 'sans' ? 'sans' : 'editorial';
   const pieces = [];
-  if (f.show.project) pieces.push({ text: gv('project').toUpperCase(), size: 6.5, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.12 });
-  if (f.show.title && (m.title.trim() || !opts.export)) pieces.push({ text: applyTokens(m.title.trim(), card) || 'Photo Title', size: big ? 13 : 10.5, font: 'serif', weight: 'bold', color: inkOnBorder });
-  if (f.show.caption && (m.caption.trim() || !opts.export)) pieces.push({ text: applyTokens(m.caption.trim(), card) || 'A short caption for this photograph.', size: capFont === 'script' ? 11 : 7.5, font: capFont, style: capFont === 'serif' ? 'italic' : 'normal', color: dark ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
-  /* broadsheet plaque adds a shot-details line and a series index */
+  if (f.show.project && gv('project')) pieces.push({ text: gv('project').toUpperCase(), size: 6.5, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.12 });
+  if (f.show.title) {
+    const t = orHint(applyTokens(m.title.trim(), card), 'Photo Title');
+    if (t) pieces.push({ key: 'title', text: t, size: big ? 16 : 13, font: 'editorial', color: inkOnBorder });
+  }
+  if (f.show.caption) {
+    const c = orHint(applyTokens(m.caption.trim(), card), 'A short caption for this photograph.');
+    if (c) pieces.push({ key: 'caption', text: c, size: capFont === 'script' ? 11 : capFont === 'editorial' ? 10 : 7.5, font: capFont, style: capFont === 'editorial' ? 'italic' : 'normal', color: light ? '#4c4c4a' : 'rgba(244,244,242,0.85)' });
+  }
   if (style === 'museum-broadsheet') {
-    const details = card.exif ? card.exif.settings : (m.camera.trim());
+    const details = card.exif ? card.exif.settings : m.camera.trim();
     if (details) pieces.push({ text: details, size: 6.5, font: 'sans', color: softOnBorder, ls: 0.04 });
-    const idx = [gv('project') !== 'Project Name' ? '' : '', m.edition.trim()].filter(Boolean).join('  ·  ') || (m.edition.trim());
     if (m.edition.trim()) pieces.push({ text: m.edition.trim().toUpperCase(), size: 6, font: 'sans', weight: 'bold', color: softOnBorder, ls: 0.1 });
   }
   const smallBits = [];
-  if (f.show.website) smallBits.push(gv('website'));
-  if (f.show.copyright) smallBits.push(gv('copyright'));
+  if (f.show.website && gv('website')) smallBits.push(gv('website'));
+  if (f.show.copyright && gv('copyright')) smallBits.push(gv('copyright'));
   if (smallBits.length) pieces.push({ text: smallBits.join('   ·   '), size: 6, font: 'sans', color: softOnBorder });
 
-  /* measure the text stack, then use the bottom border zone only if it fits —
-     otherwise fall back to an overlay so text never spills past the trim */
+  /* measure the stack; use the bottom border only if it fits */
   let metrics = null, totalH = 0;
   if (pieces.length && hasZone) {
     metrics = pieces.map(p => {
-      const lh = p.size * 1.38 / 72 * ppi;
+      const lh = p.size * 1.3 / 72 * ppi;
       ctx.font = fontStr(p.size / 72 * ppi, p.font, p.style, p.weight);
       const lines = wrapLines(ctx, p.text, zw);
       const h = lines.length * lh + p.size * 0.12 / 72 * ppi;
@@ -1244,19 +1567,21 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
   }
   const zoneFits = metrics && totalH <= bottomZoneH - 0.03 * ppi;
 
+  const creditInZone = f.creditPlace !== 'hidden' && f.creditPlace !== 'back' && !!creditText(card);
+  const creditRoom = pt(6.2, ppi) * 2.2;
+  const stackRoom = zoneFits && creditInZone && bottomZoneH - totalH >= creditRoom + 0.04 * ppi ? bottomZoneH - creditRoom : bottomZoneH;
   if (pieces.length && zoneFits) {
-    /* stack pieces vertically centred in the bottom border zone */
-    let ty = bottomZoneTop + Math.max((bottomZoneH - totalH) / 2, 0.02 * ppi);
+    let ty = bottomZoneTop + Math.max((stackRoom - totalH) / 2, 0.02 * ppi);
     pieces.forEach((p, i) => {
-      ctx.fillStyle = p.color;
-      ctx.font = fontStr(p.size / 72 * ppi, p.font, p.style, p.weight);
-      if (p.ls) ctx.letterSpacing = `${p.ls * p.size / 72 * ppi}px`;
-      drawWrapped(ctx, p.text, zx, ty, zw, metrics[i].lh, leftAlign ? 'left' : 'center');
-      ctx.letterSpacing = '0px';
+      const sizePx = p.size / 72 * ppi;
+      frontText(ctx, R, p.key, p.text, leftAlign ? zx : zx + zw / 2, ty, {
+        size: sizePx, font: p.font, style: p.style, weight: p.weight, color: p.color, ls: p.ls,
+        align: leftAlign ? 'left' : 'center', wrap: true, maxW: zw, lh: 1.3,
+      });
       ty += metrics[i].h;
     });
   } else if (pieces.length) {
-    /* overlay on the photo, bottom area, with a soft scrim for legibility */
+    /* overlay on the photo with a soft scrim */
     const scrimH = Math.min(ph * 0.42, (pieces.length * 16 + 30) / 72 * ppi + safe);
     const g = ctx.createLinearGradient(0, py + ph - scrimH, 0, py + ph);
     g.addColorStop(0, 'rgba(8,10,14,0)'); g.addColorStop(1, 'rgba(8,10,14,0.62)');
@@ -1268,71 +1593,320 @@ function drawFront(ctx, card, ppi, bleed, opts = {}) {
     for (let i = pieces.length - 1; i >= 0; i--) {
       const p = pieces[i];
       const sizePx = p.size / 72 * ppi;
-      const lh = sizePx * 1.38;
+      const lh = sizePx * 1.3;
       ctx.font = fontStr(sizePx, p.font, p.style, p.weight);
       const lines = wrapLines(ctx, p.text, zw);
       ty -= lines.length * lh + sizePx * 0.3;
-      ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = sizePx * 0.28;
-      drawWrapped(ctx, p.text, zx, ty, zw, lh, leftAlign ? 'left' : 'center');
-      ctx.shadowBlur = 0;
+      frontText(ctx, R, p.key, p.text, leftAlign ? zx : zx + zw / 2, ty, {
+        size: sizePx, font: p.font, style: p.style, weight: p.weight, color: '#ffffff', shadow: true,
+        align: leftAlign ? 'left' : 'center', wrap: true, maxW: zw, lh: 1.3,
+      });
     }
   }
 
   /* ── photographer credit ── */
   if (f.creditPlace !== 'hidden' && f.creditPlace !== 'back') {
-    const text = creditText(card);
-    const sizePx = 6.2 / 72 * ppi;
-    ctx.font = fontStr(sizePx, 'sans', 'normal', 'normal');
-    const twd = ctx.measureText(text).width;
+    const sizePx = pt(6.2, ppi);
     let cx2, align;
     if (f.creditPlace === 'bottom-left') { cx2 = b + Math.max(bw, safe); align = 'left'; }
     else if (f.creditPlace === 'center') { cx2 = W / 2; align = 'center'; }
     else { cx2 = W - b - Math.max(bw, safe); align = 'right'; }
-    ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
-    /* border is free for the credit when no text stack was drawn into it,
-       or when the stack still leaves room below itself */
     const zoneEmpty = hasZone && (!pieces.length || !zoneFits);
-    const zoneRoomBelow = hasZone && zoneFits && bottomZoneH - totalH >= 0.14 * ppi;
+    const zoneRoomBelow = hasZone && zoneFits && stackRoom < bottomZoneH;
     if (zoneEmpty) {
-      /* alone in the bottom border */
-      ctx.fillStyle = dark ? '#6a6a66' : 'rgba(244,244,242,0.8)';
-      ctx.fillText(text, cx2, H - b - Math.max((bottomZoneH - sizePx) / 2, 0.05 * ppi));
+      drawFrontCredit(ctx, card, R, cx2, H - b - Math.max((bottomZoneH + sizePx) / 2, 0.05 * ppi + sizePx), align, light ? '#6a6a66' : 'rgba(244,244,242,0.8)');
     } else if (zoneRoomBelow) {
-      ctx.fillStyle = dark ? '#8a8a86' : 'rgba(244,244,242,0.7)';
-      ctx.fillText(text, cx2, H - b - 0.055 * ppi);
+      drawFrontCredit(ctx, card, R, cx2, H - b - creditRoom / 2 - sizePx * 0.6, align, light ? '#8a8a86' : 'rgba(244,244,242,0.7)');
     } else {
-      /* on the photograph */
-      const yb = py + ph - safe * 0.7;
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.94)';
-      ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = sizePx * 0.4;
-      ctx.fillText(text, f.creditPlace === 'bottom-left' ? px + safe * 0.8 : f.creditPlace === 'center' ? px + pw / 2 : px + pw - safe * 0.8, yb);
-      ctx.restore();
+      const xx = f.creditPlace === 'bottom-left' ? px + safe * 0.8 : f.creditPlace === 'center' ? px + pw / 2 : px + pw - safe * 0.8;
+      drawFrontCredit(ctx, card, R, xx, py + ph - safe * 0.7 - sizePx, align, 'rgba(255,255,255,0.94)', true);
     }
   }
 
-  /* ── logo ── */
-  if (f.show.logo) {
-    const lg = state.global.logoId ? imageStore.get(state.global.logoId) : null;
-    const lh = 0.24 * ppi;
-    const lx = W - b - Math.max(bw, safe) - lh, ly = b + Math.max(bw, safe) * 0.7;
-    if (lg) {
-      const s = Math.min(lh / lg.h, (lh * 2.4) / lg.w);
-      ctx.drawImage(lg.img, W - b - Math.max(bw, safe) - lg.w * s, ly, lg.w * s, lg.h * s);
-    } else if (!opts.export) {
-      ctx.save();
-      ctx.strokeStyle = hasZone ? softOnBorder : 'rgba(255,255,255,0.8)';
-      ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-      ctx.strokeRect(lx, ly, lh, lh);
-      ctx.font = fontStr(4.6 / 72 * ppi, 'sans');
-      ctx.fillStyle = hasZone ? softOnBorder : 'rgba(255,255,255,0.8)';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('LOGO', lx + lh / 2, ly + lh / 2);
-      ctx.restore();
-    }
+  if (f.show.logo) drawFrontLogo(ctx, card, R, b + Math.max(bw, safe), !hasZone);
+}
+
+function drawFrontCredit(ctx, card, R, x, y, align, color, shadow) {
+  const f = card.front;
+  if (f.creditPlace === 'hidden' || f.creditPlace === 'back') return;
+  const text = creditText(card);
+  if (!text) return;
+  frontText(ctx, R, 'credit', text, x, y, { size: pt(6.2, R.ppi), font: 'sans', color, align, shadow });
+}
+
+function drawFrontLogo(ctx, card, R, inset, onPhoto) {
+  const { ppi, W, opts } = R;
+  const lg = state.global.logoId ? imageStore.get(state.global.logoId) : null;
+  const lh = 0.24 * ppi;
+  const ly = R.b + inset * 0.7 - R.b * 0.7;
+  if (lg) {
+    const s = Math.min(lh / lg.h, (lh * 2.4) / lg.w);
+    ctx.drawImage(lg.img, W - inset - lg.w * s, ly, lg.w * s, lg.h * s);
+  } else if (!opts.export) {
+    const lx = W - inset - lh;
+    ctx.save();
+    ctx.strokeStyle = onPhoto ? 'rgba(255,255,255,0.8)' : 'rgba(120,120,116,0.8)';
+    ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+    ctx.strokeRect(lx, ly, lh, lh);
+    ctx.font = fontStr(pt(4.6, ppi), 'sans');
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('LOGO', lx + lh / 2, ly + lh / 2);
+    ctx.restore();
   }
 }
+
+/* ── Layouts that need their own drawing ── */
+function photoFill(ctx, card, R, x, y, w, h, extra = {}) {
+  const f = card.front;
+  const ov = drawPhotoInto(ctx, imageStore.get(card.imageId), { x, y, w, h, fit: f.fit, tx: f.tx, adjust: extra.adjust || f.adjust, ppi: R.ppi });
+  if (!extra.noRecord) photoOverflow.set(f, { x: ov.ox / R.ppi, y: ov.oy / R.ppi });
+  if (R.hit && !extra.noRecord) R.hit('photo', x, y, w, h);
+  return ov;
+}
+
+const FRONT_RENDERERS = {
+  /* Big block letters filled with the photo, over a darkened copy of it */
+  greetings(ctx, card, R) {
+    const { ppi, W, H, b, th, safe } = R;
+    const f = card.front, m = card.meta;
+    const accent = f.accent || '#e8b931';
+    const a0 = f.adjust || {};
+    photoFill(ctx, card, R, 0, 0, W, H, { adjust: { ...a0, mode: 'bw', exposure: (a0.exposure ?? 1) * 0.9 } });
+    ctx.fillStyle = 'rgba(14,12,9,0.5)'; ctx.fillRect(0, 0, W, H);
+
+    const word = orHint((m.location.trim() || m.title.trim()).toUpperCase(), 'YOUR PLACE');
+    const tagline = f.tagline != null ? f.tagline : 'Greetings from';
+    const maxW = W - 2 * (b + safe * 1.2);
+    let size = th * 0.5 * ppi;
+    size = fitSize(ctx, word, size, maxW, 'display', 'normal', 'normal', 0.02);
+    ctx.font = fontStr(size, 'display');
+    ctx.letterSpacing = `${0.02 * size}px`;
+    const mt = ctx.measureText(word || 'X');
+    const asc = mt.actualBoundingBoxAscent || size * 0.75, desc = mt.actualBoundingBoxDescent || 0;
+    const tagPx = Math.max(pt(12, ppi), size * 0.2);
+    const blockH = tagPx * 1.1 + asc + desc;
+    const top = (H - blockH) / 2 + tagPx * 0.3;
+    const base = top + tagPx * 1.1 + asc;
+    const cx = W / 2;
+    if (word) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      /* extruded shadow */
+      const depth = Math.max(2, size * 0.055);
+      ctx.fillStyle = '#14110d';
+      for (let k = depth; k > 0; k -= Math.max(1, depth / 14)) ctx.fillText(word, cx + k, base + k);
+      /* accent outline */
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, size * 0.07);
+      ctx.strokeText(word, cx, base);
+      /* letters filled with the photo */
+      const off = document.createElement('canvas');
+      off.width = Math.ceil(W); off.height = Math.ceil(H);
+      const o = off.getContext('2d');
+      const a = f.adjust || {};
+      drawPhotoInto(o, imageStore.get(card.imageId), { x: 0, y: 0, w: W, h: H, fit: 'fill', tx: f.tx, adjust: { ...a, exposure: (a.exposure ?? 1) * 1.22, contrast: (a.contrast ?? 1) * 1.1 }, ppi });
+      o.globalCompositeOperation = 'destination-in';
+      o.font = ctx.font; o.letterSpacing = ctx.letterSpacing;
+      o.textAlign = 'center'; o.textBaseline = 'alphabetic';
+      o.fillText(word, cx, base);
+      ctx.drawImage(off, 0, 0);
+      ctx.strokeStyle = 'rgba(20,17,13,0.85)'; ctx.lineWidth = Math.max(1, size * 0.012);
+      ctx.strokeText(word, cx, base);
+      ctx.letterSpacing = '0px';
+      const ww = Math.min(maxW, ctx.measureText(word).width);
+      if (R.hit) R.hit('location', cx - ww / 2, base - asc, ww, asc + desc, { font: 'display', sizeIn: size / ppi, align: 'center', color: '#fff', lh: 1 });
+    }
+    ctx.letterSpacing = '0px';
+    if (tagline) frontText(ctx, R, 'tagline', tagline, cx, top - tagPx * 0.15, { size: tagPx, font: 'editorial', style: 'italic', color: accent, align: 'center', shadow: true, lh: 1.05 });
+    else if (R.hit && !EXPORTING) R.hit('tagline', cx - tagPx * 3, top - tagPx * 0.15, tagPx * 6, tagPx, { font: 'editorial', style: 'italic', sizeIn: tagPx / ppi, align: 'center', color: accent });
+    drawFrontCredit(ctx, card, R, W - b - safe, H - b - safe * 0.8 - pt(6.2, ppi), 'right', 'rgba(255,255,255,0.85)');
+  },
+
+  /* Inset photo over a solid band carrying the title in poster type */
+  'travel-poster'(ctx, card, R) {
+    const { ppi, W, H, b, th, safe } = R;
+    const f = card.front, m = card.meta;
+    const accent = f.accent || '#1f4e5f';
+    const ink = inkFor(accent), soft = softInkFor(accent);
+    ctx.fillStyle = accent; ctx.fillRect(0, 0, W, H);
+    const bd = b + Math.max(f.borderW, 0.1) * ppi;
+    const bandH = th * 0.3 * ppi;
+    const photoB = H - b - bandH;
+    photoFill(ctx, card, R, bd, bd, W - 2 * bd, photoB - bd);
+    const title = f.show.title ? orHint(applyTokens(m.title.trim(), card).toUpperCase(), 'PHOTO TITLE') : '';
+    const right = [m.location.trim(), m.date.trim()].filter(Boolean).join('\n') || (EXPORTING ? '' : 'YOUR PLACE\n2026');
+    const colW = (W - 2 * bd) * (right ? 0.66 : 0.95);
+    const capH = f.show.caption ? pt(7, ppi) * 1.5 : 0;
+    let ts = fitSize(ctx, title, bandH * 0.56, colW, 'display', 'normal', 'normal', 0.03);
+    const ty = photoB + (bandH - ts * 1.02 - capH) / 2;
+    if (title) frontText(ctx, R, 'title', title, bd, ty, { size: ts, font: 'display', color: ink, ls: 0.03, lh: 1.02 });
+    if (f.show.caption) {
+      const c = orHint(applyTokens(m.caption.trim(), card), 'A short caption');
+      if (c) frontText(ctx, R, 'caption', c, bd, ty + ts * 1.06, { size: pt(7, ppi), font: 'sans', color: soft, maxW: colW, maxLines: 1, wrap: true });
+    }
+    if (right) {
+      const rs = pt(6.5, ppi);
+      const lines = right.split('\n');
+      const ry = photoB + (bandH - lines.length * rs * 1.5) / 2;
+      frontText(ctx, R, 'location', right.toUpperCase(), W - bd, ry, { size: rs, font: 'sans', weight: 'bold', color: soft, align: 'right', ls: 0.16, wrap: true, maxW: (W - 2 * bd) * 0.3, lh: 1.5 });
+    }
+    ctx.fillStyle = soft; ctx.fillRect(bd, photoB + Math.max(1, ppi / 150), W - 2 * bd, Math.max(1, ppi / 200));
+  },
+
+  /* A single 35 mm frame with sprocket holes and amber edge print */
+  'film-strip'(ctx, card, R) {
+    const { ppi, W, H, b, th, safe } = R;
+    const m = card.meta;
+    ctx.fillStyle = '#0e0d0c'; ctx.fillRect(0, 0, W, H);
+    const strip = th * 0.13 * ppi;
+    const holeW = strip * 0.5, holeH = strip * 0.38, pitch = holeW * 1.85;
+    const rr = holeH * 0.22;
+    ctx.fillStyle = '#efebe3';
+    const hole = (x, y) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, holeW, holeH, rr) : ctx.rect(x, y, holeW, holeH); ctx.fill(); };
+    const topY = b + strip * 0.16, botY = H - b - strip * 0.16 - holeH;
+    for (let x = (W % pitch) / 2 - pitch; x < W; x += pitch) { hole(x, topY); hole(x, botY); }
+    const fx = b + safe * 0.5, fy = b + strip, fw = W - 2 * fx, fh = H - 2 * (b + strip);
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(fx, fy, fw, fh, ppi * 0.03) : ctx.rect(fx, fy, fw, fh); ctx.clip();
+    photoFill(ctx, card, R, fx, fy, fw, fh);
+    ctx.restore();
+    const amber = '#e9a03b';
+    const ep = pt(5.2, ppi);
+    const n = Math.max(1, state.cards.indexOf(card) + 1);
+    const titleText = card.front.show.title ? orHint(m.title.trim().toUpperCase(), 'PHOTO TITLE') : '';
+    const lowerTop = topY + holeH + (fy - topY - holeH - ep) / 2;
+    frontText(ctx, R, null, `▸ ${n}`, fx + pitch * 0.2, lowerTop, { size: ep, font: 'mono', weight: 'bold', color: amber, ls: 0.1 });
+    if (titleText) frontText(ctx, R, 'title', titleText, W / 2, lowerTop, { size: ep, font: 'mono', weight: 'bold', color: amber, align: 'center', ls: 0.22 });
+    frontText(ctx, R, null, `${n}A`, W - fx - pitch * 0.2, lowerTop, { size: ep, font: 'mono', weight: 'bold', color: amber, align: 'right', ls: 0.1 });
+    const bottomText = orHint([m.location.trim(), m.date.trim()].filter(Boolean).join('  ·  ').toUpperCase(), 'YOUR PLACE  ·  2026');
+    const upperBot = fy + fh + (botY - fy - fh - ep) / 2;
+    if (bottomText) frontText(ctx, R, 'location', bottomText, W / 2, upperBot, { size: ep, font: 'mono', weight: 'bold', color: amber, align: 'center', ls: 0.22 });
+    frontText(ctx, R, null, `${n + 1}`, fx + pitch * 0.2, upperBot, { size: ep, font: 'mono', weight: 'bold', color: amber, ls: 0.1 });
+  },
+
+  /* The whole front is one oversized perforated stamp, with a cancellation */
+  'postage-stamp'(ctx, card, R) {
+    const { ppi, W, H, b, tw, th } = R;
+    const f = card.front, m = card.meta;
+    const bg = f.accent || '#e9e3d6';
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const sw = Math.min(tw * 0.72, th * 1.18) * ppi, sh = th * 0.78 * ppi;
+    const sx = (W - sw) / 2 - tw * 0.04 * ppi, sy = (H - sh) / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = ppi * 0.05; ctx.shadowOffsetY = ppi * 0.015;
+    ctx.fillStyle = '#fbf9f4'; ctx.fillRect(sx, sy, sw, sh);
+    ctx.restore();
+    perforate(ctx, { x: sx, y: sy, w: sw, h: sh }, ppi, bg, 0.11);
+    const pad = 0.17 * ppi, labelH = 0.3 * ppi;
+    const px = sx + pad, py = sy + pad, pw = sw - 2 * pad, ph = sh - 2 * pad - labelH;
+    photoFill(ctx, card, R, px, py, pw, ph);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = Math.max(1, ppi / 300);
+    ctx.strokeRect(px, py, pw, ph);
+    const lp = pt(7, ppi);
+    const ly = py + ph + (labelH - lp) / 2;
+    const place = orHint(m.location.trim().toUpperCase(), 'YOUR PLACE');
+    if (place) frontText(ctx, R, 'location', place, px, ly, { size: lp, font: 'sans', weight: 'bold', color: '#2a2622', ls: 0.14 });
+    const date = orHint(m.date.trim(), '2026');
+    if (date) frontText(ctx, R, 'date', date, px + pw, ly - lp * 0.25, { size: lp * 1.3, font: 'editorial', style: 'italic', color: '#2a2622', align: 'right' });
+    if (f.cancel !== false) {
+      const r = { x: sx + sw * 0.7, y: sy - sh * 0.05, w: tw * 0.4 * ppi, h: th * 0.27 * ppi };
+      drawPostmark(ctx, card, { ink: '#2b2b2b', opacity: 0.62, blend: 'multiply', waves: 5, city: null, date: null }, r, ppi);
+    }
+  },
+
+  /* Edge-to-edge photo with a solid band for the title */
+  'caption-bar'(ctx, card, R) {
+    const { ppi, W, H, b, th, safe } = R;
+    const f = card.front, m = card.meta;
+    const accent = f.accent || '#151515';
+    const ink = inkFor(accent), soft = softInkFor(accent);
+    const barH = Math.max(0.5, th * 0.16) * ppi;
+    const barY = H - b - barH;
+    photoFill(ctx, card, R, 0, 0, W, barY);
+    ctx.fillStyle = accent; ctx.fillRect(0, barY, W, H - barY);
+    const x0 = b + safe;
+    const right = orHint([m.location.trim(), m.date.trim()].filter(Boolean).join('  ·  ').toUpperCase(), 'YOUR PLACE  ·  2026');
+    const rp = pt(6.5, ppi);
+    let rw = 0;
+    if (right) { ctx.font = fontStr(rp, 'sans', 'normal', 'bold'); ctx.letterSpacing = `${0.14 * rp}px`; rw = ctx.measureText(right).width; ctx.letterSpacing = '0px'; }
+    const title = f.show.title ? orHint(applyTokens(m.title.trim(), card), 'Photo Title') : '';
+    if (title) {
+      const ts = fitSize(ctx, title, barH * 0.56, W - 2 * x0 - rw - safe, 'editorial');
+      frontText(ctx, R, 'title', title, x0, barY + (barH - ts) / 2 - ts * 0.05, { size: ts, font: 'editorial', color: ink, lh: 1 });
+    }
+    if (right) frontText(ctx, R, 'location', right, W - x0, barY + (barH - rp) / 2, { size: rp, font: 'sans', weight: 'bold', color: soft, align: 'right', ls: 0.14 });
+    drawFrontCredit(ctx, card, R, W - x0, barY - safe * 0.6 - pt(6.2, ppi), 'right', 'rgba(255,255,255,0.9)', true);
+  },
+
+  /* Magazine page: headline column and a large photo */
+  'editorial-cover'(ctx, card, R) {
+    const { ppi, W, H, b, tw, th, safe } = R;
+    const f = card.front, m = card.meta;
+    const bg = f.accent || '#f4efe4';
+    const ink = inkFor(bg), soft = softInkFor(bg);
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const mg = b + Math.max(f.borderW, 0.16) * ppi;
+    const landscape = tw >= th * 1.05;
+    let col, photo;
+    if (landscape) {
+      const px = W * 0.43;
+      photo = [px, mg, W - mg - px, H - 2 * mg];
+      col = { x: mg, y: mg, w: px - mg - safe * 0.9, h: H - 2 * mg };
+    } else {
+      const py = H * 0.42;
+      photo = [mg, py, W - 2 * mg, H - mg - py];
+      col = { x: mg, y: mg, w: W - 2 * mg, h: py - mg - safe * 0.6 };
+    }
+    photoFill(ctx, card, R, ...photo);
+    const n = Math.max(1, state.cards.indexOf(card) + 1);
+    const np = pt(6.5, ppi);
+    frontText(ctx, R, null, `No. ${String(n).padStart(2, '0')}`, col.x, col.y, { size: np, font: 'mono', color: soft, ls: 0.06 });
+    if (gv('project')) {
+      const pj = gv('project').toUpperCase();
+      frontText(ctx, R, null, pj, col.x + col.w, col.y, { size: fitSize(ctx, pj, np, col.w * 0.66, 'sans', 'normal', 'bold', 0.12), font: 'sans', weight: 'bold', color: soft, align: 'right', ls: 0.12 });
+    }
+    let y = col.y + np * 2.6;
+    const title = f.show.title ? orHint(applyTokens(m.title.trim(), card), 'Photo Title') : '';
+    if (title) {
+      let ts = Math.min(th * 0.2 * ppi, col.w * 0.34);
+      ctx.font = fontStr(ts, 'editorial');
+      while (ts > pt(12, ppi) && wrapLines(ctx, title, col.w).length * ts * 0.98 > col.h * 0.55) { ts *= 0.92; ctx.font = fontStr(ts, 'editorial'); }
+      y += frontText(ctx, R, 'title', title, col.x, y, { size: ts, font: 'editorial', color: ink, wrap: true, maxW: col.w, lh: 0.98, maxLines: 4 }) + ts * 0.25;
+    }
+    if (f.show.caption) {
+      const c = orHint(applyTokens(m.caption.trim(), card), 'A short caption for this photograph.');
+      if (c) frontText(ctx, R, 'caption', c, col.x, y, { size: pt(7.5, ppi), font: 'sans', color: soft, wrap: true, maxW: col.w, lh: 1.4, maxLines: 4 });
+    }
+    const foot = orHint([m.location.trim(), m.date.trim()].filter(Boolean).join('  ·  ').toUpperCase(), 'YOUR PLACE  ·  2026');
+    const fp = pt(6, ppi);
+    const fy = col.y + col.h - fp;
+    ctx.fillStyle = soft; ctx.fillRect(col.x, fy - fp * 0.9, Math.min(col.w, ppi * 0.5), Math.max(1, ppi / 200));
+    if (foot) frontText(ctx, R, 'location', foot, col.x, fy, { size: fp, font: 'sans', weight: 'bold', color: soft, ls: 0.14, wrap: true, maxW: col.w, maxLines: 1 });
+  },
+
+  /* Large centred words over the photo — greetings, announcements */
+  headline(ctx, card, R) {
+    const { ppi, W, H, b, tw, th, safe } = R;
+    const f = card.front, m = card.meta;
+    photoFill(ctx, card, R, 0, 0, W, H);
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.1, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, 'rgba(10,9,8,0.42)'); g.addColorStop(1, 'rgba(10,9,8,0.18)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const title = f.show.title ? orHint(applyTokens(m.title.trim(), card), 'Season’s Greetings') : '';
+    const cap = f.show.caption ? orHint(applyTokens(m.caption.trim(), card).toUpperCase(), 'FROM ALL OF US') : '';
+    const maxW = W - 2 * (b + safe * 1.6);
+    let ts = th * 0.24 * ppi;
+    ctx.font = fontStr(ts, 'editorial');
+    while (ts > pt(14, ppi) && (wrapLines(ctx, title, maxW).length > 2 || Math.max(...wrapLines(ctx, title, maxW).map(l => ctx.measureText(l).width)) > maxW)) { ts *= 0.93; ctx.font = fontStr(ts, 'editorial'); }
+    const lines = title ? Math.min(2, wrapLines(ctx, title, maxW).length) : 0;
+    const cp = pt(7.5, ppi);
+    const blockH = lines * ts * 1.0 + (cap ? cp * 2.4 : 0);
+    let y = (H - blockH) / 2;
+    if (title) y += frontText(ctx, R, 'title', title, W / 2, y, { size: ts, font: 'editorial', color: '#fff', align: 'center', wrap: true, maxW, lh: 1.0, maxLines: 2, shadow: true });
+    if (cap) frontText(ctx, R, 'caption', cap, W / 2, y + cp * 1.1, { size: cp, font: 'sans', weight: 'bold', color: 'rgba(255,255,255,0.88)', align: 'center', ls: 0.22, shadow: true });
+    drawFrontCredit(ctx, card, R, W - b - safe, H - b - safe * 0.8 - pt(6.2, ppi), 'right', 'rgba(255,255,255,0.85)', true);
+  },
+};
 
 /* ═══════════════════════ Back renderer ═══════════════════════ */
 function elementRect(el, ppi, bleed) {
@@ -1371,12 +1945,10 @@ function drawBack(ctx, card, ppi, bleed, opts = {}) {
   if (opts.selected) {
     const r = elementRect(opts.selected, ppi, bleed);
     ctx.save();
-    ctx.strokeStyle = '#e2694f'; ctx.lineWidth = Math.max(1.2, ppi / 72);
-    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#c23b22'; ctx.lineWidth = Math.max(1.2, ppi / 72);
     ctx.strokeRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4);
-    ctx.setLineDash([]);
-    const hs = Math.max(7, ppi * 0.09);
-    ctx.fillStyle = '#e2694f';
+    const hs = Math.max(9, ppi * 0.1);
+    ctx.fillStyle = '#c23b22';
     ctx.beginPath(); ctx.arc(r.x + r.w, r.y + r.h, hs / 2, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(r.x + r.w, r.y + r.h, hs / 5, 0, Math.PI * 2); ctx.fill();
@@ -1412,7 +1984,7 @@ function circText(ctx, text, cx, cy, radius, startDeg, endDeg, fontPx, bottom) {
 
 function drawPostmark(ctx, card, el, r, ppi) {
   const ink = el.ink || '#3b4a56';
-  const city = (el.city != null ? el.city : card.meta.location).trim() || 'YOUR LOCATION';
+  const city = (el.city != null ? el.city : card.meta.location).trim() || (EXPORTING ? '' : 'YOUR LOCATION');
   const date = (el.date != null ? el.date : card.meta.date).trim() || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
   const circleD = Math.min(r.h, r.w * 0.55);
   const cx = r.x + circleD / 2, cy = r.y + r.h / 2;
@@ -1429,13 +2001,7 @@ function drawPostmark(ctx, card, el, r, ppi) {
   const tr = R * 0.88;
   circText(ctx, city, cx, cy, tr, -168, -12, R * 0.2, false);
   circText(ctx, date, cx, cy, tr, 168, 12, R * 0.18, true);
-  /* centre: small star + short rule */
-  ctx.beginPath();
-  for (let k = 0; k < 5; k++) {
-    const a = -Math.PI / 2 + k * (Math.PI * 2 / 5);
-    const rr = k % 1 === 0 ? R * 0.16 : R * 0.07;
-    ctx[k === 0 ? 'moveTo' : 'lineTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
-  }
+  /* centre star */
   ctx.fillStyle = ink;
   ctx.font = `700 ${R * 0.22}px ${FONTS.serif}`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1460,8 +2026,8 @@ function drawPostmark(ctx, card, el, r, ppi) {
 }
 
 /* perforated-edge helper: punch semicircular notches around a rect */
-function perforate(ctx, r, ppi, bg) {
-  const step = Math.max(6, Math.min(r.w, r.h) / 11);
+function perforate(ctx, r, ppi, bg, stepIn) {
+  const step = stepIn ? stepIn * ppi : Math.max(6, Math.min(r.w, r.h) / 11);
   ctx.save();
   ctx.fillStyle = bg;
   ctx.globalCompositeOperation = 'source-over';
@@ -1547,7 +2113,7 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
         const y = r.y + (r.h * i) / n;
         ctx.beginPath(); ctx.moveTo(r.x, y); ctx.lineTo(r.x + r.w, y); ctx.stroke();
       }
-      if (!opts.export) {
+      if (!opts.export && el.showLabel !== false) {
         ctx.fillStyle = 'rgba(150,150,146,0.55)';
         ctx.font = fontStr(5.5 / 72 * ppi, 'sans');
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -1555,8 +2121,18 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
       }
       break;
     }
+    case 'lines': {
+      const n = Math.max(1, el.lines || 6);
+      ctx.strokeStyle = el.color && el.color !== '#2a2a2a' ? el.color : '#cfc9bd';
+      ctx.lineWidth = Math.max(1, ppi / 260);
+      for (let i = 1; i <= n; i++) {
+        const y = Math.round(r.y + (r.h * i) / n) + 0.5;
+        ctx.beginPath(); ctx.moveTo(r.x, y); ctx.lineTo(r.x + r.w, y); ctx.stroke();
+      }
+      break;
+    }
     case 'divider': {
-      ctx.fillStyle = '#cfcfca';
+      ctx.fillStyle = el.color && el.color !== '#2a2a2a' ? el.color : '#cfcfca';
       ctx.fillRect(r.x, r.y, Math.max(r.w, ppi / 220), Math.max(r.h, ppi / 220));
       break;
     }
@@ -1586,8 +2162,8 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
       };
       let idx = 0;
       for (let x = r.x; x < r.x + r.w - band; x += seg) dash(x, r.y, 1, 0, idx++);          /* top */
-      for (let y = r.y; y < r.y + r.h - band; y += seg) dash(r.x + r.w - band, y, 0, 1, idx++); /* right */
-      for (let x = r.x + r.w; x > r.x + band; x -= seg) dash(x, r.y + r.h - band, -1, 0, idx++); /* bottom */
+      for (let y = r.y; y < r.y + r.h - band; y += seg) dash(r.x + r.w, y, 0, 1, idx++);       /* right */
+      for (let x = r.x + r.w; x > r.x + band; x -= seg) dash(x, r.y + r.h, -1, 0, idx++);       /* bottom */
       for (let y = r.y + r.h; y > r.y + band; y -= seg) dash(r.x, y, 0, -1, idx++);          /* left */
       ctx.restore();
       break;
@@ -1621,6 +2197,7 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
     }
     case 'qr': {
       const t = card.back.qrText || state.global.website;
+      if (opts.export && !(t || '').trim()) break;   /* never print an empty QR placeholder */
       drawQr(ctx, t, r.x, r.y, Math.min(r.w, r.h), { dark: el.qrDark || '#1a1a1a', light: el.qrLight || '#ffffff' });
       break;
     }
@@ -1645,6 +2222,8 @@ function drawBackElement(ctx, card, el, r, ppi, opts) {
       let ghost = false;
       if (!text && !opts.export && el.bind && BIND_PLACEHOLDER[el.bind]) {
         text = BIND_PLACEHOLDER[el.bind]; ghost = true;
+      } else if (text && !opts.export && el.bind && !bindTextReal(card, el.bind)) {
+        ghost = true;   /* a hint such as "Your Website": shown faintly, never printed */
       }
       if (!text) break;
       const sizePx = el.size / 72 * ppi;
@@ -1688,17 +2267,24 @@ function renderCardSide(card, side, ppi, opts = {}) {
   const slug = opts.marks ? MARK_LEN + MARK_GAP + 0.02 : 0;
   const W = Math.round((tw + 2 * bleed + 2 * slug) * ppi);
   const H = Math.round((th + 2 * bleed + 2 * slug) * ppi);
-  const canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = H;
+  const canvas = opts.target || document.createElement('canvas');
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
+  ctx.clearRect(0, 0, W, H);
   if (slug) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
     ctx.save();
     ctx.translate(slug * ppi, slug * ppi);
   }
-  if (side === 'front') drawFront(ctx, card, ppi, bleed, opts);
-  else drawBack(ctx, card, ppi, bleed, opts);
+  const prev = EXPORTING;
+  EXPORTING = !!opts.export;
+  try {
+    if (side === 'front') drawFront(ctx, card, ppi, bleed, opts);
+    else drawBack(ctx, card, ppi, bleed, opts);
+  } finally { EXPORTING = prev; }
   if (slug) { ctx.restore(); drawCropMarks(ctx, ppi, slug, bleed); }
   return canvas;
 }
@@ -1771,34 +2357,41 @@ function drawSheetMarks(ctx, x, y, w, h, b, ppi) {
   ctx.restore();
 }
 
-function renderContactSheet(cards, sheetKey, ppi) {
+/* contact sheet grid: 3 columns, as many rows as fit the page */
+function contactLayout(sheetKey) {
   const sheet = SHEETS[sheetKey];
-  const W = sheet.w, H = sheet.h;
+  const margin = 0.5, gap = 0.24, labelH = 0.22, head = 0.1;
+  const cols = 3;
+  const { w: tw, h: th } = trimSize();
+  const cw = (sheet.w - 2 * margin - (cols - 1) * gap) / cols;
+  const ch = cw * th / tw;
+  const rows = Math.max(1, Math.floor((sheet.h - 2 * margin - head + gap) / (ch + labelH + gap)));
+  return { W: sheet.w, H: sheet.h, margin, gap, labelH, head, cols, rows, per: cols * rows, cw, ch };
+}
+function renderContactSheet(cards, sheetKey, ppi) {
+  const L = contactLayout(sheetKey);
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(W * ppi); canvas.height = Math.round(H * ppi);
+  canvas.width = Math.round(L.W * ppi); canvas.height = Math.round(L.H * ppi);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const margin = 0.5, gap = 0.24, labelH = 0.22;
-  const cols = 3;
-  const cw = (W - 2 * margin - (cols - 1) * gap) / cols;
-  const { w: tw, h: th } = trimSize();
-  const ch = cw * th / tw;
+  const { w: tw } = trimSize();
   ctx.fillStyle = '#333';
   ctx.font = fontStr(10 / 72 * ppi, 'sans', 'normal', 'bold');
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${state.projectName || 'Project'} — contact sheet`, margin * ppi, (margin - 0.14) * ppi);
-  cards.forEach((card, i) => {
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = (margin + col * (cw + gap)) * ppi;
-    const y = (margin + 0.1 + row * (ch + labelH + gap)) * ppi;
-    if (y + ch * ppi > (H - margin) * ppi) return;
-    const c = renderCardSide(card, 'front', Math.max(72, cw / tw * 72), { export: true });
-    ctx.drawImage(c, x, y, cw * ppi, ch * ppi);
+  ctx.fillText(`${state.projectName || 'Project'} — contact sheet`, L.margin * ppi, (L.margin - 0.14) * ppi);
+  cards.slice(0, L.per).forEach((card, i) => {
+    const col = i % L.cols, row = Math.floor(i / L.cols);
+    const x = (L.margin + col * (L.cw + L.gap)) * ppi;
+    const y = (L.margin + L.head + row * (L.ch + L.labelH + L.gap)) * ppi;
+    /* render each card at the sheet's own resolution so it stays sharp */
+    const c = renderCardSide(card, 'front', L.cw / tw * ppi, { export: true });
+    ctx.drawImage(c, x, y, L.cw * ppi, L.ch * ppi);
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, cw * ppi, ch * ppi);
+    ctx.strokeRect(x, y, L.cw * ppi, L.ch * ppi);
     ctx.fillStyle = '#555';
     ctx.font = fontStr(6.5 / 72 * ppi, 'sans');
-    ctx.fillText(`${String(i + 1).padStart(2, '0')}  ${card.meta.title || card.name}`, x, y + ch * ppi + 0.14 * ppi);
+    const idx = state.cards.indexOf(card);
+    ctx.fillText(`${String((idx >= 0 ? idx : i) + 1).padStart(2, '0')}  ${card.meta.title || card.name}`, x, y + L.ch * ppi + 0.14 * ppi);
   });
   return canvas;
 }
@@ -1807,13 +2400,21 @@ function renderContactSheet(cards, sheetKey, ppi) {
 const view = {
   zoom: 1, panX: 0, panY: 0, fitMode: true,
   needsRender: true,
+  cache: { front: null, back: null },   /* reused canvases, one per side */
+  hits: [],                              /* front text/photo hit boxes, css-ready */
+  snap: null,                            /* active snap guides while dragging */
+  hover: null,                           /* front hit under the pointer */
 };
 const previewCanvas = $('#previewCanvas');
 const viewport = $('#previewViewport');
 
+let selectedEl = null;     /* selected back element */
+let frontSel = null;       /* selected front piece: 'photo' | 'title' | 'caption' | … */
+
 function requestRender() {
   view.needsRender = true;
   renderTimelineThumbSoon(state.sel);
+  refreshTemplatesSoon();
 }
 
 function previewLoop() {
@@ -1830,29 +2431,25 @@ function previewContent() {
   const cw = tw + 2 * bleed, ch = th + 2 * bleed;
   const mode = state.ui.view;
   if (mode === 'both') {
+    const portrait = viewport.clientHeight > viewport.clientWidth * 1.1;
     const gap = 0.35;
-    return {
-      items: [
-        { card, side: 'front', x: 0, y: 0 },
-        { card, side: 'back', x: cw + gap, y: 0 },
-      ], W: cw * 2 + gap, H: ch,
-    };
+    return portrait
+      ? { items: [{ card, side: 'front', x: 0, y: 0 }, { card, side: 'back', x: 0, y: ch + gap }], W: cw, H: ch * 2 + gap }
+      : { items: [{ card, side: 'front', x: 0, y: 0 }, { card, side: 'back', x: cw + gap, y: 0 }], W: cw * 2 + gap, H: ch };
   }
   if (mode === 'sheet') {
     const sheetKey = state.export.pdfMode === 'sheet-letter' ? 'letter' : 'a4';
     const L = sheetLayout(sheetKey, { bleed: state.bleedOn, marks: state.marksOn });
     return { items: [{ sheet: sheetKey }], W: L.W, H: L.H };
   }
-  const side = mode === 'back' ? 'back' : state.ui.side;
-  return { items: [{ card, side, x: 0, y: 0 }], W: cw, H: ch };
+  return { items: [{ card, side: state.ui.side, x: 0, y: 0 }], W: cw, H: ch };
 }
 
 function previewPpi() {
-  /* css pixels per inch of card at current zoom */
   const rect = viewport.getBoundingClientRect();
   const { W, H } = previewContent();
-  const pad = 42;
-  const fit = Math.min((rect.width - pad) / W, (rect.height - pad * 2) / H);
+  const pad = rect.width < 600 ? 18 : 48;
+  const fit = Math.min((rect.width - pad * 2) / W, (rect.height - pad * 2) / H);
   return Math.max(6, fit * view.zoom);
 }
 
@@ -1869,14 +2466,17 @@ function drawPreview() {
   ctx.clearRect(0, 0, rect.width, rect.height);
 
   const card = currentCard();
-  $('#emptyState').style.display = card ? 'none' : '';
-  if (!card) return;
+  $('#emptyState').hidden = !!card;
+  $('#previewHud').hidden = !card;
+  view.hits = [];
+  if (!card) { view._geom = null; positionOverlays(); return; }
 
   const content = previewContent();
   const ppi = previewPpi();
   const cx = rect.width / 2 + view.panX, cy = rect.height / 2 + view.panY;
   const ox = cx - (content.W * ppi) / 2, oy = cy - (content.H * ppi) / 2;
   view._geom = { ppi, ox, oy, content };
+  updateZoomLabel();
 
   const renderPpi = ppi * dpr;
   if (content.items[0] && content.items[0].sheet) {
@@ -1886,24 +2486,29 @@ function drawPreview() {
       bleed: state.bleedOn, marks: state.marksOn, edge: state.export.edge,
     });
     ctx.save();
-    ctx.shadowColor = 'rgba(10,14,22,0.4)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+    ctx.shadowColor = 'rgba(30,20,10,0.3)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
     ctx.fillStyle = '#fff';
     ctx.fillRect(ox, oy, content.W * ppi, content.H * ppi);
     ctx.restore();
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(c, ox, oy, content.W * ppi, content.H * ppi);
+    positionOverlays();
     return;
   }
 
+  const bleed = bleedIn();
+  const { w: tw, h: th } = trimSize();
+  const cw = tw + 2 * bleed, ch = th + 2 * bleed;
   for (const item of content.items) {
-    const bleed = bleedIn();
-    const { w: tw, h: th } = trimSize();
-    const cw = tw + 2 * bleed, ch = th + 2 * bleed;
     const x = ox + item.x * ppi, y = oy + item.y * ppi;
-    const selected = (item.side === 'back' && selectedEl && item.card === currentCard()) ? selectedEl : null;
-    const c = renderCardSide(item.card, item.side, Math.min(renderPpi, 220), { bleed: state.bleedOn, selected });
+    const isCur = item.card === currentCard();
+    const selected = (item.side === 'back' && selectedEl && isCur) ? selectedEl : null;
+    const hits = item.side === 'front' ? [] : null;
+    const target = view.cache[item.side] || (view.cache[item.side] = document.createElement('canvas'));
+    const c = renderCardSide(item.card, item.side, Math.min(renderPpi, 240), { bleed: state.bleedOn, selected, hits, target });
+    if (hits) for (const h of hits) view.hits.push({ ...h, cx: x + h.x * ppi, cy: y + h.y * ppi, cw: h.w * ppi, ch: h.h * ppi });
     ctx.save();
-    ctx.shadowColor = 'rgba(10,14,22,0.42)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 9;
+    ctx.shadowColor = 'rgba(30,20,10,0.32)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, cw * ppi, ch * ppi);
     ctx.restore();
@@ -1911,21 +2516,49 @@ function drawPreview() {
     ctx.drawImage(c, x, y, cw * ppi, ch * ppi);
 
     if (state.ui.guides) drawGuides(ctx, x, y, ppi, bleed);
+
+    /* front selection / hover outline */
+    if (item.side === 'front' && isCur) {
+      const outline = (h, solid) => {
+        ctx.save();
+        ctx.strokeStyle = '#c23b22'; ctx.lineWidth = solid ? 1.5 : 1;
+        if (!solid) ctx.setLineDash([4, 3]);
+        ctx.strokeRect(x + h.x * ppi - 3, y + h.y * ppi - 2, h.w * ppi + 6, h.h * ppi + 4);
+        ctx.restore();
+      };
+      const sel = frontSel && frontSel !== 'photo' ? hits.find(h => h.key === frontSel) : null;
+      if (sel) outline(sel, true);
+      if (view.hover && view.hover.key !== frontSel && view.hover.key !== 'photo') {
+        const hv = hits.find(h => h.key === view.hover.key);
+        if (hv) outline(hv, false);
+      }
+    }
+    /* snap guides */
+    if (view.snap && item.side === 'back' && isCur) {
+      ctx.save();
+      ctx.strokeStyle = '#2a7de1'; ctx.lineWidth = 1;
+      for (const fx of view.snap.x) { const gx = Math.round(x + (bleed + fx * tw) * ppi) + 0.5; ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx, y + ch * ppi); ctx.stroke(); }
+      for (const fy of view.snap.y) { const gy = Math.round(y + (bleed + fy * th) * ppi) + 0.5; ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x + cw * ppi, gy); ctx.stroke(); }
+      ctx.restore();
+    }
     if (content.items.length > 1) {
-      ctx.fillStyle = 'rgba(128,132,142,0.9)';
+      ctx.fillStyle = 'rgba(128,122,110,0.95)';
       ctx.font = `600 11px ${FONTS.sans}`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(item.side === 'front' ? 'FRONT' : 'BACK', x + cw * ppi / 2, y + ch * ppi + 8);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.letterSpacing = '1px';
+      ctx.fillText(item.side === 'front' ? 'FRONT' : 'BACK', x, y + ch * ppi + 8);
+      ctx.letterSpacing = '0px';
     }
   }
+  positionOverlays();
 }
 
-/* diagonal warning-hatch fill for the bleed band (preview only) */
+/* bleed hatch, trim line and safe area — preview only */
 function hatchPattern() {
   if (hatchPattern._p) return hatchPattern._p;
   const t = document.createElement('canvas'); t.width = t.height = 8;
   const c = t.getContext('2d');
-  c.strokeStyle = 'rgba(226,80,80,0.5)'; c.lineWidth = 2;
+  c.strokeStyle = 'rgba(194,59,34,0.35)'; c.lineWidth = 1.5;
   c.beginPath(); c.moveTo(-2, 6); c.lineTo(6, -2); c.moveTo(2, 10); c.lineTo(10, 2); c.stroke();
   return (hatchPattern._p = c.createPattern(t, 'repeat'));
 }
@@ -1935,29 +2568,25 @@ function drawGuides(ctx, x, y, ppi, bleed) {
   const cw = (tw + 2 * bleed) * ppi, ch = (th + 2 * bleed) * ppi;
   ctx.save();
   if (bleed > 0) {
-    /* bleed band: shaded warning hatch between the canvas edge and the trim */
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x, y, cw, ch);                                   /* outer (bleed edge) */
-    ctx.rect(x + bleed * ppi, y + bleed * ppi, tw * ppi, th * ppi);   /* inner (trim) */
+    ctx.rect(x, y, cw, ch);
+    ctx.rect(x + bleed * ppi, y + bleed * ppi, tw * ppi, th * ppi);
     ctx.clip('evenodd');
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x, y, cw, ch);
     ctx.fillStyle = hatchPattern();
     ctx.fillRect(x, y, cw, ch);
     ctx.restore();
-    /* bleed edge — red hairline */
-    ctx.strokeStyle = 'rgba(226,80,80,0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
   }
-  /* trim line — solid blue highlight (the actual cut) */
-  ctx.strokeStyle = 'rgba(64,132,238,0.9)';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x + bleed * ppi, y + bleed * ppi, tw * ppi, th * ppi);
-  /* safe zone — dashed green inner padding */
+  /* trim: where the card is cut */
+  ctx.strokeStyle = 'rgba(20,20,20,0.55)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(Math.round(x + bleed * ppi) + 0.5, Math.round(y + bleed * ppi) + 0.5, Math.round(tw * ppi) - 1, Math.round(th * ppi) - 1);
+  /* safe area: keep words inside */
   if (state.safeOn) {
-    ctx.strokeStyle = 'rgba(52,190,140,0.8)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = 'rgba(42,125,225,0.75)';
+    ctx.setLineDash([4, 4]);
     ctx.strokeRect(x + (bleed + SAFE_IN) * ppi, y + (bleed + SAFE_IN) * ppi, (tw - 2 * SAFE_IN) * ppi, (th - 2 * SAFE_IN) * ppi);
     ctx.setLineDash([]);
   }
@@ -1969,25 +2598,20 @@ function setZoom(z, focusX, focusY) {
   const fx = focusX ?? rect.width / 2, fy = focusY ?? rect.height / 2;
   const prev = view.zoom;
   z = clamp(z, 0.15, 12);
-  /* keep the focus point stable */
   const scale = z / prev;
   view.panX = fx - rect.width / 2 + (view.panX - (fx - rect.width / 2)) * scale;
   view.panY = fy - rect.height / 2 + (view.panY - (fy - rect.height / 2)) * scale;
   view.zoom = z;
   view.fitMode = false;
-  updateZoomLabel();
   view.needsRender = true;
 }
-function zoomFit() { view.zoom = 1; view.panX = 0; view.panY = 0; view.fitMode = true; updateZoomLabel(); view.needsRender = true; }
+function zoomFit() { view.zoom = 1; view.panX = 0; view.panY = 0; view.fitMode = true; view.needsRender = true; }
 function zoomActual() {
   /* 1:1 print size on screen (assumes 96 css px / inch) */
-  const rect = viewport.getBoundingClientRect();
-  const { W } = previewContent();
-  const pad = 42;
-  const fit = Math.min((rect.width - pad) / W, (rect.height - pad * 2) / previewContent().H);
-  view.zoom = 96 / fit;
+  const base = previewPpi() / view.zoom;
+  view.zoom = 96 / base;
   view.panX = 0; view.panY = 0; view.fitMode = false;
-  updateZoomLabel(); view.needsRender = true;
+  view.needsRender = true;
 }
 function updateZoomLabel() {
   const g = view._geom;
@@ -1996,28 +2620,30 @@ function updateZoomLabel() {
 }
 
 /* ═══════════════════ Pointer interaction ═══════════════════ */
-let selectedEl = null;
 const pointers = new Map();
 let gesture = null;   /* {type:'pan'|'photo'|'el-move'|'el-resize'|'pinch', ...} */
 
-/* preview css position → card-local inches for the primary item */
+/* preview css position → the item under it and card-local inches */
 function toCardCoords(cssX, cssY) {
   const g = view._geom;
   if (!g) return null;
-  const content = g.content;
-  const item = content.items.find(i => !i.sheet);
-  if (!item) return null;
-  /* which item? pick the one whose rect contains the point (both mode) */
   const bleed = bleedIn();
   const { w: tw, h: th } = trimSize();
   const cw = tw + 2 * bleed, ch = th + 2 * bleed;
-  for (const it of content.items) {
+  for (const it of g.content.items) {
+    if (it.sheet) continue;
     const x0 = g.ox + it.x * g.ppi, y0 = g.oy + it.y * g.ppi;
     if (cssX >= x0 && cssX <= x0 + cw * g.ppi && cssY >= y0 && cssY <= y0 + ch * g.ppi) {
       return { item: it, ix: (cssX - x0) / g.ppi, iy: (cssY - y0) / g.ppi };
     }
   }
   return null;
+}
+function itemOrigin(side) {
+  const g = view._geom;
+  if (!g) return null;
+  const it = g.content.items.find(i => i.side === side);
+  return it ? { x: g.ox + it.x * g.ppi, y: g.oy + it.y * g.ppi, ppi: g.ppi } : null;
 }
 
 function hitBackElement(ix, iy) {
@@ -2026,27 +2652,68 @@ function hitBackElement(ix, iy) {
   const bleed = bleedIn();
   const { w: tw, h: th } = trimSize();
   const els = card.back.elements;
+  const pad = Math.max(0.03, 6 / (view._geom ? view._geom.ppi : 60));
   for (let i = els.length - 1; i >= 0; i--) {
     const el = els[i];
-    if (!el.visible) continue;
+    if (!el.visible || el.type === 'airmail') continue;   /* the border frame shouldn't swallow clicks */
     const x = bleed + el.x * tw, y = bleed + el.y * th;
     const w = el.w * tw, h = el.h * th;
-    const pad = 0.06;
     if (ix >= x - pad && ix <= x + w + pad && iy >= y - pad && iy <= y + h + pad) return el;
   }
-  return null;
+  const air = els.find(e => e.visible && e.type === 'airmail');
+  return air && iy < bleed + 0.12 ? air : null;
+}
+function hitFront(cssX, cssY) {
+  /* text first (it sits on top of the photo), smallest box wins */
+  let best = null;
+  for (const h of view.hits) {
+    if (h.key === 'photo') continue;
+    if (cssX >= h.cx - 4 && cssX <= h.cx + h.cw + 4 && cssY >= h.cy - 3 && cssY <= h.cy + h.ch + 3) {
+      if (!best || h.cw * h.ch < best.cw * best.ch) best = h;
+    }
+  }
+  if (best) return best;
+  return view.hits.find(h => h.key === 'photo' && cssX >= h.cx && cssX <= h.cx + h.cw && cssY >= h.cy && cssY <= h.cy + h.ch) || null;
 }
 
 function onHandle(el, ix, iy) {
   const bleed = bleedIn();
   const { w: tw, h: th } = trimSize();
   const hx = bleed + (el.x + el.w) * tw, hy = bleed + (el.y + el.h) * th;
-  const r = Math.max(0.09, 10 / (view._geom ? view._geom.ppi : 60));
+  const r = Math.max(0.08, 14 / (view._geom ? view._geom.ppi : 60));
   return Math.hypot(ix - hx, iy - hy) < r;
 }
 
+/* snap a moving element to the card centre, the safe area and other elements */
+function snapMove(el, nx, ny, cssTol) {
+  const { w: tw, h: th } = trimSize();
+  const g = view._geom;
+  const tolX = cssTol / (g.ppi * tw), tolY = cssTol / (g.ppi * th);
+  const xs = [0.5, SAFE_IN / tw, 1 - SAFE_IN / tw], ys = [0.5, SAFE_IN / th, 1 - SAFE_IN / th];
+  for (const o of currentCard().back.elements) {
+    if (o === el || !o.visible || o.type === 'airmail') continue;
+    xs.push(o.x, o.x + o.w, o.x + o.w / 2); ys.push(o.y, o.y + o.h, o.y + o.h / 2);
+  }
+  const pick = (pos, size, targets, tol) => {
+    let best = null;
+    for (const [off, anchor] of [[0, 0], [size / 2, 0.5], [size, 1]]) {
+      for (const t of targets) {
+        const d = t - (pos + off);
+        if (Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, line: t };
+      }
+    }
+    return best;
+  };
+  const sx = pick(nx, el.w, xs, tolX), sy = pick(ny, el.h, ys, tolY);
+  view.snap = { x: sx ? [sx.line] : [], y: sy ? [sy.line] : [] };
+  return { x: nx + (sx ? sx.d : 0), y: ny + (sy ? sy.d : 0) };
+}
+
+let lastTap = { t: 0, x: 0, y: 0 };
 viewport.addEventListener('pointerdown', (e) => {
   if (!currentCard()) return;
+  if (e.target !== previewCanvas && e.target !== viewport) return;   /* clicks on the toolbar/editor */
+  if (!$('#inlineEdit').hidden) finishInlineEdit();
   viewport.setPointerCapture(e.pointerId);
   const rect = viewport.getBoundingClientRect();
   const cssX = e.clientX - rect.left, cssY = e.clientY - rect.top;
@@ -2054,43 +2721,58 @@ viewport.addEventListener('pointerdown', (e) => {
 
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
-    gesture = {
-      type: 'pinch',
-      dist: Math.hypot(a.x - b.x, a.y - b.y),
-      zoom: view.zoom,
-      cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
-    };
+    gesture = { type: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), zoom: view.zoom, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
     return;
   }
+  /* double-tap detection for touch (dblclick is unreliable there) */
+  const now = performance.now();
+  const dbl = now - lastTap.t < 320 && Math.hypot(cssX - lastTap.x, cssY - lastTap.y) < 24;
+  lastTap = dbl ? { t: 0, x: 0, y: 0 } : { t: now, x: cssX, y: cssY };   /* a third press starts fresh */
 
   const hit = toCardCoords(cssX, cssY);
-  const activeSide = hit ? hit.item.side : null;
+  const side = hit ? hit.item.side : null;
+  if (side && side !== state.ui.side && state.ui.view === 'both') { state.ui.side = side; syncSideUi(); }
 
-  if (hit && activeSide === 'back' && state.ui.view !== 'sheet') {
+  if (hit && side === 'back' && state.ui.view !== 'sheet') {
+    if (frontSel) { frontSel = null; }
     if (selectedEl && onHandle(selectedEl, hit.ix, hit.iy)) {
       gesture = { type: 'el-resize', el: selectedEl, sw: selectedEl.w, sh: selectedEl.h, six: hit.ix, siy: hit.iy };
       return;
     }
     const el = hitBackElement(hit.ix, hit.iy);
     if (el) {
-      if (selectedEl !== el) { selectedEl = el; syncElEditor(); view.needsRender = true; }
-      gesture = { type: 'el-move', el, ex: el.x, ey: el.y, six: hit.ix, siy: hit.iy, moved: false };
+      const wasSelected = selectedEl === el;
+      if (!wasSelected) { selectedEl = el; syncElEditor(); view.needsRender = true; }
+      if (dbl && isTextual(el)) { e.preventDefault(); gesture = null; startInlineEdit({ el }); return; }
+      gesture = { type: 'el-move', el, ex: el.x, ey: el.y, six: hit.ix, siy: hit.iy, moved: false, wasSelected };
       return;
     }
     if (selectedEl) { selectedEl = null; syncElEditor(); view.needsRender = true; }
   }
 
-  if (hit && activeSide === 'front' && state.ui.view !== 'sheet' && currentCard().front.fit === 'fill' && currentCard().imageId) {
-    gesture = {
-      type: 'photo', card: currentCard(),
-      tx: currentCard().front.tx.x, ty: currentCard().front.tx.y,
-      sx: cssX, sy: cssY, moved: false,
-    };
-    viewport.classList.add('dragging');
-    return;
+  if (hit && side === 'front' && state.ui.view !== 'sheet') {
+    if (selectedEl) { selectedEl = null; syncElEditor(); }
+    const fh = hitFront(cssX, cssY);
+    if (fh && fh.key !== 'photo') {
+      const was = frontSel === fh.key;
+      frontSel = fh.key; view.needsRender = true;
+      if (dbl || was) { e.preventDefault(); gesture = null; startInlineEdit({ front: fh.key }); return; }
+      gesture = { type: 'tap' };
+      return;
+    }
+    const card = currentCard();
+    frontSel = card.imageId ? 'photo' : null;
+    view.needsRender = true;
+    if (card.imageId) {
+      gesture = { type: 'photo', card, tx: card.front.tx.x, ty: card.front.tx.y, sx: cssX, sy: cssY, moved: false };
+      viewport.classList.add('dragging');
+      return;
+    }
+    if (dbl || !card.imageId) { $('#replaceInput').click(); return; }
   }
 
-  gesture = { type: 'pan', px: view.panX, py: view.panY, sx: cssX, sy: cssY };
+  if (!hit && (frontSel || selectedEl)) { frontSel = null; selectedEl = null; syncElEditor(); view.needsRender = true; }
+  gesture = { type: 'pan', px: view.panX, py: view.panY, sx: cssX, sy: cssY, moved: false };
   viewport.classList.add('dragging');
 });
 
@@ -2100,10 +2782,16 @@ viewport.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
   if (p) { p.x = cssX; p.y = cssY; }
 
-  /* hover cursor over back elements */
-  if (!gesture && state.ui.view !== 'sheet') {
+  if (!gesture && state.ui.view !== 'sheet' && e.pointerType === 'mouse') {
     const hit = toCardCoords(cssX, cssY);
-    viewport.classList.toggle('el-hover', !!(hit && hit.item.side === 'back' && hitBackElement(hit.ix, hit.iy)));
+    const onBack = hit && hit.item.side === 'back';
+    const el = onBack ? hitBackElement(hit.ix, hit.iy) : null;
+    const fh = hit && hit.item.side === 'front' ? hitFront(cssX, cssY) : null;
+    viewport.classList.toggle('resize-hover', !!(onBack && selectedEl && onHandle(selectedEl, hit.ix, hit.iy)));
+    viewport.classList.toggle('el-hover', !!el);
+    viewport.classList.toggle('text-hover', !!(fh && fh.key !== 'photo'));
+    const hk = fh ? fh.key : null;
+    if ((view.hover && view.hover.key) !== hk) { view.hover = fh; view.needsRender = true; }
   }
   if (!gesture) return;
 
@@ -2114,6 +2802,9 @@ viewport.addEventListener('pointermove', (e) => {
     return;
   }
   if (gesture.type === 'pan') {
+    if (Math.abs(cssX - gesture.sx) + Math.abs(cssY - gesture.sy) > 4) gesture.moved = true;
+    /* on phones a horizontal swipe at fit zoom flips the card instead of panning */
+    if (isNarrow() && view.fitMode) return;
     view.panX = gesture.px + (cssX - gesture.sx);
     view.panY = gesture.py + (cssY - gesture.sy);
     view.fitMode = false;
@@ -2124,26 +2815,36 @@ viewport.addEventListener('pointermove', (e) => {
     const g = view._geom;
     if (!g) return;
     const f = gesture.card.front;
-    const { w: tw, h: th } = trimSize();
-    f.tx.x = clamp(gesture.tx + (cssX - gesture.sx) / (g.ppi * tw * 0.5), -1, 1);
-    f.tx.y = clamp(gesture.ty + (cssY - gesture.sy) / (g.ppi * th * 0.5), -1, 1);
+    const ov = photoOverflow.get(f) || { x: 0, y: 0 };
+    if (ov.x > 0.002) f.tx.x = clamp(gesture.tx + (cssX - gesture.sx) / (g.ppi * ov.x), -1, 1);
+    if (ov.y > 0.002) f.tx.y = clamp(gesture.ty + (cssY - gesture.sy) / (g.ppi * ov.y), -1, 1);
     if (Math.abs(cssX - gesture.sx) + Math.abs(cssY - gesture.sy) > 3) gesture.moved = true;
     view.needsRender = true;
     return;
   }
   const hit = toCardCoords(cssX, cssY);
-  if (!hit) return;
+  const g = view._geom;
+  if (!g) return;
   const { w: tw, h: th } = trimSize();
+  const o = itemOrigin('back');
+  const ix = o ? (cssX - o.x) / g.ppi : (hit ? hit.ix : 0), iy = o ? (cssY - o.y) / g.ppi : (hit ? hit.iy : 0);
   if (gesture.type === 'el-move') {
     const el = gesture.el;
-    el.x = clamp(gesture.ex + (hit.ix - gesture.six) / tw, -0.05, 0.98);
-    el.y = clamp(gesture.ey + (hit.iy - gesture.siy) / th, -0.05, 0.98);
-    gesture.moved = true;
+    let nx = gesture.ex + (ix - gesture.six) / tw;
+    let ny = gesture.ey + (iy - gesture.siy) / th;
+    if (Math.abs(ix - gesture.six) + Math.abs(iy - gesture.siy) > 2 / g.ppi) gesture.moved = true;
+    if (!gesture.moved) return;
+    if (!e.altKey) ({ x: nx, y: ny } = snapMove(el, nx, ny, 6));
+    else view.snap = null;
+    el.x = clamp(nx, -0.05, 0.98);
+    el.y = clamp(ny, -0.05, 0.98);
+    if (el.type === 'qr') $('#qrPos').value = qrPresetOf(el);
     view.needsRender = true;
   } else if (gesture.type === 'el-resize') {
     const el = gesture.el;
-    el.w = clamp(gesture.sw + (hit.ix - gesture.six) / tw, 0.03, 1);
-    el.h = clamp(gesture.sh + (hit.iy - gesture.siy) / th, 0.015, 1);
+    el.w = clamp(gesture.sw + (ix - gesture.six) / tw, 0.03, 1.05 - el.x);
+    el.h = el.type === 'qr' ? el.w * tw / th : clamp(gesture.sh + (iy - gesture.siy) / th, 0.015, 1.05 - el.y);
+    if (el.type === 'qr') { el.h = el.w; $('#qrSize').value = el.w; $('#qrSizeOut').textContent = Math.round(el.w * 100) + '%'; }
     view.needsRender = true;
   }
 });
@@ -2153,23 +2854,31 @@ function endPointer(e) {
   viewport.classList.remove('dragging');
   if (!gesture) return;
   if (gesture.type === 'pan' && pointers.size === 0) {
-    /* swipe to flip on small screens */
-    const dx = (e.clientX - viewport.getBoundingClientRect().left) - gesture.sx;
-    if (window.matchMedia('(max-width: 900px)').matches && Math.abs(dx) > 90 && view.fitMode !== false) {
-      setSide(dx < 0 ? 'back' : 'front');
+    const rect = viewport.getBoundingClientRect();
+    const dx = (e.clientX - rect.left) - gesture.sx, dy = (e.clientY - rect.top) - gesture.sy;
+    if (isNarrow() && view.fitMode && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4 && state.ui.view !== 'sheet') {
+      setSide(state.ui.side === 'front' ? 'back' : 'front');
     }
   }
+  if (gesture.type === 'el-move' && !gesture.moved && gesture.wasSelected && isTextual(gesture.el) && e.pointerType !== 'mouse') {
+    e.preventDefault();
+    startInlineEdit({ el: gesture.el });   /* second tap on a selected text box edits it */
+  }
   if (['photo', 'el-move', 'el-resize'].includes(gesture.type)) {
-    if (gesture.type !== 'el-move' || gesture.moved) commit();
+    if ((gesture.type !== 'el-move' && gesture.type !== 'photo') || gesture.moved) commit();
     if (gesture.type === 'photo') syncFrontInputs();
   }
+  view.snap = null;
+  view.needsRender = true;
   if (pointers.size < 2 && gesture.type === 'pinch') gesture = null;
   if (pointers.size === 0) gesture = null;
 }
 viewport.addEventListener('pointerup', endPointer);
 viewport.addEventListener('pointercancel', endPointer);
+viewport.addEventListener('pointerleave', () => { if (view.hover) { view.hover = null; view.needsRender = true; } });
 
 viewport.addEventListener('wheel', (e) => {
+  if (e.target !== previewCanvas) return;
   e.preventDefault();
   const rect = viewport.getBoundingClientRect();
   if (e.ctrlKey || e.metaKey) {
@@ -2181,7 +2890,284 @@ viewport.addEventListener('wheel', (e) => {
   }
 }, { passive: false });
 
-viewport.addEventListener('dblclick', () => { view.fitMode ? zoomActual() : zoomFit(); });
+viewport.addEventListener('dblclick', (e) => {
+  if (e.target !== previewCanvas) return;
+  const rect = viewport.getBoundingClientRect();
+  if (!toCardCoords(e.clientX - rect.left, e.clientY - rect.top)) { view.fitMode ? zoomActual() : zoomFit(); }
+});
+
+function isNarrow() { return window.matchMedia('(max-width: 900px)').matches; }
+function isTextual(el) { return el && (el.type === 'text' || (el.type === 'box' && !!el.bind)); }
+
+/* ═══════════════════ On-card editing ═══════════════════
+   A textarea is laid over the text on the card, styled to match, so typing
+   happens in place. The card underneath re-renders as you type. */
+let inlineTarget = null;
+const inlineCommit = debounce(() => commit(), 600);
+
+function frontFieldValue(card, key) {
+  const m = card.meta, f = card.front;
+  switch (key) {
+    case 'title': return m.title;
+    case 'caption': return m.caption;
+    case 'location': return m.location;
+    case 'date': return m.date;
+    case 'tagline': return f.tagline != null ? f.tagline : 'Greetings from';
+    case 'credit': return creditText(card);
+  }
+  return '';
+}
+function setFrontField(card, key, v) {
+  const m = card.meta, f = card.front;
+  switch (key) {
+    case 'title': m.title = v; break;
+    case 'caption': m.caption = v; break;
+    case 'location': m.location = v; break;
+    case 'date': m.date = v; break;
+    case 'tagline': f.tagline = v; break;
+    case 'credit': f.creditFormat = 'custom'; f.creditCustom = v; break;
+  }
+}
+/* raw text of a back element (tokens left as typed) */
+function elValue(card, el) {
+  if (!el.bind) return el.text || '';
+  const m = card.meta;
+  switch (el.bind) {
+    case 'caption': return m.caption || m.title;
+    case 'story': return m.story;
+    case 'date': return m.date;
+    case 'location': case 'coords': return m.location;
+    case 'title': case 'cta': return m.title;
+    case 'edition': return m.edition;
+    case 'camera': return m.camera;
+    case 'website': return state.global.website;
+    case 'project': return state.global.project;
+    case 'copyright': return state.global.copyright;
+    case 'placeName': return m.location || m.title;
+  }
+  return bindTextReal(card, el.bind);
+}
+/* write edited text back to wherever the element gets it from */
+function setElValue(card, el, v) {
+  if (!el.bind) { el.text = v; return; }
+  const m = card.meta;
+  switch (el.bind) {
+    case 'caption': m.caption = v; break;
+    case 'story': m.story = v; break;
+    case 'date': m.date = v; break;
+    case 'location': case 'coords': m.location = v; break;
+    case 'title': case 'cta': m.title = v; break;
+    case 'edition': m.edition = v; break;
+    case 'camera': m.camera = v; break;
+    case 'placeName': m.location = v; break;
+    case 'website': state.global.website = v; break;
+    case 'project': state.global.project = v; break;
+    case 'copyright': state.global.copyright = v; break;
+    default: el.bind = null; el.text = v;   /* credit, meta, bio… become plain text */
+  }
+}
+
+function startInlineEdit(target) {
+  const card = currentCard();
+  if (!card) return;
+  const ta = $('#inlineEdit');
+  inlineTarget = target;
+  if (target.el) {
+    ta.value = elValue(card, target.el);
+    ta.dataset.multiline = '1';
+  } else {
+    ta.value = frontFieldValue(card, target.front);
+    ta.dataset.multiline = '';   /* front lines: Enter finishes, Shift+Enter breaks the line */
+  }
+  ta.hidden = false;
+  inlineOpenedAt = performance.now();
+  positionOverlays();
+  /* short labels: select all so typing replaces; longer text: caret at the end */
+  const place = () => { if (ta.value.length <= 40) ta.select(); else ta.setSelectionRange(ta.value.length, ta.value.length); };
+  ta.focus();
+  place();
+  requestAnimationFrame(() => { if (!ta.hidden && document.activeElement !== ta) { ta.focus(); place(); } });
+}
+let inlineOpenedAt = 0;
+function finishInlineEdit() {
+  const ta = $('#inlineEdit');
+  if (ta.hidden) return;
+  ta.hidden = true;
+  inlineTarget = null;
+  inlineCommit.flush ? inlineCommit.flush() : commit();
+  syncAllInputs();
+  view.needsRender = true;
+}
+function bindInlineEditor() {
+  const ta = $('#inlineEdit');
+  ta.addEventListener('input', () => {
+    const card = currentCard();
+    if (!card || !inlineTarget) return;
+    if (inlineTarget.el) setElValue(card, inlineTarget.el, ta.value);
+    else setFrontField(card, inlineTarget.front, ta.value);
+    view.needsRender = true;
+    renderTimelineThumbSoon(state.sel);
+    inlineCommit();
+  });
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey && !ta.dataset.multiline)) { e.preventDefault(); finishInlineEdit(); }
+    e.stopPropagation();
+  });
+  ta.addEventListener('blur', () => setTimeout(() => {
+    /* ignore the focus wobble of the click that opened the editor */
+    if (performance.now() - inlineOpenedAt < 250 && !ta.hidden) { ta.focus(); return; }
+    if (document.activeElement !== ta) finishInlineEdit();
+  }, 0));
+}
+
+/* place the floating toolbar and the inline editor over the current selection */
+function selectionRect() {
+  const g = view._geom;
+  const card = currentCard();
+  if (!g || !card) return null;
+  if (selectedEl && state.ui.side === 'back') {
+    const o = itemOrigin('back');
+    if (!o) return null;
+    const { w: tw, h: th } = trimSize();
+    const b = bleedIn();
+    return { x: o.x + (b + selectedEl.x * tw) * g.ppi, y: o.y + (b + selectedEl.y * th) * g.ppi, w: selectedEl.w * tw * g.ppi, h: selectedEl.h * th * g.ppi };
+  }
+  if (frontSel && state.ui.side === 'front') {
+    const h = view.hits.find(x => x.key === frontSel);
+    if (h) return { x: h.cx, y: h.cy, w: h.cw, h: h.ch, hit: h };
+  }
+  return null;
+}
+function positionOverlays() {
+  const bar = $('#ctxBar'), ta = $('#inlineEdit');
+  const r = selectionRect();
+  const vw = viewport.clientWidth;
+  const editing = !ta.hidden;
+  if (editing && r && inlineTarget) {
+    const g = view._geom;
+    let font, sizePx, align, color, style = 'normal', weight = 'normal', lh;
+    if (inlineTarget.el) {
+      const el = inlineTarget.el;
+      sizePx = (el.size || 9) / 72 * g.ppi; font = el.font || 'sans'; align = el.align || 'left';
+      color = el.color || '#2a2a2a'; style = el.style || 'normal'; weight = el.weight || 'normal'; lh = el.lineHeight || 1.45;
+    } else {
+      const h = r.hit;
+      sizePx = (h.sizeIn || 0.1) * g.ppi; font = h.font || 'sans'; align = h.align || 'left';
+      color = h.color || '#222'; style = h.style || 'normal'; weight = h.weight || 'normal'; lh = h.lh || 1.25;
+    }
+    ta.style.font = `${style === 'italic' ? 'italic ' : ''}${weight === 'bold' ? '600 ' : ''}${sizePx}px/${lh} ${FONTS[font] || FONTS.sans}`;
+    ta.style.textAlign = align;
+    const lightText = /^rgba?\(\s*2[0-9]{2}/.test(color) || (/^#/.test(color) && luminance(color) > 0.6);
+    ta.style.color = lightText ? '#fff' : (/^#/.test(color) ? color : '#222');
+    ta.style.background = lightText ? 'rgba(20,18,15,0.82)' : 'rgba(255,255,255,0.95)';
+    const minW = Math.max(r.w, 60);
+    ta.style.left = (r.x - (minW - r.w) / 2) + 'px';
+    ta.style.top = r.y + 'px';
+    ta.style.width = minW + 'px';
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(r.h, ta.scrollHeight, sizePx * lh) + 'px';
+  }
+  if (!r || editing || gesture && gesture.type !== 'tap') { bar.hidden = true; return; }
+  buildCtxBar();
+  if (!bar.childElementCount) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const bw = bar.offsetWidth;
+  let x = clamp(r.x + r.w / 2, bw / 2 + 6, vw - bw / 2 - 6);
+  let y = r.y - 10;
+  if (y - bar.offsetHeight < 6) { y = r.y + r.h + 10 + bar.offsetHeight; }
+  bar.style.left = x + 'px';
+  bar.style.top = y + 'px';
+}
+
+/* contextual toolbar contents */
+let ctxKey = '';
+function buildCtxBar() {
+  const bar = $('#ctxBar');
+  const card = currentCard();
+  const key = selectedEl ? `el:${selectedEl.id}:${selectedEl.size}:${selectedEl.weight}:${selectedEl.style}:${selectedEl.align}:${selectedEl.font}` : frontSel ? `f:${frontSel}:${card && card.front.fit}:${card && card.front.tx.zoom}` : '';
+  if (key === ctxKey && bar.childElementCount) return;
+  ctxKey = key;
+  bar.innerHTML = '';
+  const btn = (label, title, fn, on) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.innerHTML = label; b.title = title; b.setAttribute('aria-label', title);
+    if (on) b.classList.add('on');
+    b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    bar.appendChild(b);
+    return b;
+  };
+  const sep = () => { const s = document.createElement('span'); s.className = 'sep'; bar.appendChild(s); };
+  if (!card) return;
+  if (selectedEl) {
+    const el = selectedEl;
+    const changed = () => { commit(); syncElEditor(); view.needsRender = true; };
+    if (isTextual(el)) {
+      btn('Edit', 'Type on the card (Enter)', () => startInlineEdit({ el }));
+      sep();
+      btn('A−', 'Smaller', () => { el.size = clamp(+(el.size - (el.size > 14 ? 2 : 0.5)).toFixed(1), 4, 96); changed(); });
+      btn('A+', 'Bigger', () => { el.size = clamp(+(el.size + (el.size >= 14 ? 2 : 0.5)).toFixed(1), 4, 96); changed(); });
+      if (el.type === 'text') {
+        btn('<b>B</b>', 'Bold', () => { el.weight = el.weight === 'bold' ? 'normal' : 'bold'; changed(); }, el.weight === 'bold');
+        btn('<i style="font-family:Georgia,serif">I</i>', 'Italic', () => { el.style = el.style === 'italic' ? 'normal' : 'italic'; changed(); }, el.style === 'italic');
+        const alignIcon = { left: '⇤', center: '↔', right: '⇥' }[el.align || 'left'];
+        btn(alignIcon, 'Alignment', () => { el.align = { left: 'center', center: 'right', right: 'left' }[el.align || 'left']; changed(); });
+        const fonts = ['sans', 'serif', 'editorial', 'display', 'mono', 'script'];
+        const names = { sans: 'Sans', serif: 'Serif', editorial: 'Editorial', display: 'Poster', mono: 'Type', script: 'Script' };
+        btn(names[el.font] || 'Sans', 'Font', () => { el.font = fonts[(fonts.indexOf(el.font) + 1) % fonts.length]; changed(); });
+        const c = document.createElement('input');
+        c.type = 'color'; c.value = /^#[0-9a-f]{6}$/i.test(el.color) ? el.color : '#2a2a2a'; c.title = 'Ink colour'; c.setAttribute('aria-label', 'Ink colour');
+        c.addEventListener('pointerdown', (e) => e.stopPropagation());
+        c.addEventListener('input', () => { el.color = c.value; view.needsRender = true; });
+        c.addEventListener('change', changed);
+        bar.appendChild(c);
+      }
+      sep();
+    }
+    btn('Duplicate', 'Duplicate (Ctrl+D)', duplicateSelected);
+    btn(el.type === 'text' && !el.bind ? 'Delete' : 'Hide', 'Remove from the card (Delete)', () => $('#elHide').click());
+    return;
+  }
+  if (frontSel === 'photo') {
+    const f = card.front;
+    btn('−', 'Zoom out', () => { f.tx.zoom = clamp(f.tx.zoom / 1.15, 1, 3); commit(); syncFrontInputs(); view.needsRender = true; });
+    const r = document.createElement('input');
+    r.type = 'range'; r.min = 1; r.max = 3; r.step = 0.01; r.value = f.tx.zoom; r.setAttribute('aria-label', 'Photo zoom');
+    r.addEventListener('pointerdown', (e) => e.stopPropagation());
+    r.addEventListener('input', () => { f.tx.zoom = parseFloat(r.value); $('#fZoom').value = r.value; $('#fZoomOut').textContent = Math.round(f.tx.zoom * 100) + '%'; view.needsRender = true; });
+    r.addEventListener('change', () => commit());
+    bar.appendChild(r);
+    btn('+', 'Zoom in', () => { f.tx.zoom = clamp(f.tx.zoom * 1.15, 1, 3); commit(); syncFrontInputs(); view.needsRender = true; });
+    sep();
+    btn('↻', 'Rotate 90°', () => { f.tx.rot = (f.tx.rot + 90) % 360; commit(); view.needsRender = true; });
+    btn(f.fit === 'fill' ? 'Show whole' : 'Fill frame', 'Switch between filling the frame and showing the whole photo', () => { f.fit = f.fit === 'fill' ? 'fit' : 'fill'; commit(); syncFrontInputs(); view.needsRender = true; });
+    btn('Replace', 'Use a different photo', () => $('#replaceInput').click());
+    return;
+  }
+  if (frontSel) {
+    btn('Edit', 'Type on the card', () => startInlineEdit({ front: frontSel }));
+    const f = card.front;
+    const hideable = { title: 'title', caption: 'caption' }[frontSel];
+    if (hideable) btn('Hide', 'Hide on this card', () => { f.show[hideable] = false; frontSel = null; commit(); syncFrontInputs(); view.needsRender = true; });
+    if (frontSel === 'credit') btn('Hide', 'Hide the credit', () => { f.creditPlace = 'hidden'; frontSel = null; commit(); syncFrontInputs(); view.needsRender = true; });
+    if (frontSel === 'tagline') btn('Remove', 'Remove the greeting line', () => { f.tagline = ''; frontSel = null; commit(); syncFrontInputs(); view.needsRender = true; });
+  }
+}
+
+function duplicateSelected() {
+  const card = currentCard();
+  if (!card || !selectedEl || selectedEl.type === 'qr' || selectedEl.type === 'postmark' || selectedEl.type === 'airmail') {
+    if (selectedEl) toast('There can only be one of those on a card.');
+    return;
+  }
+  const copy = deepClone(selectedEl);
+  copy.id = uid();
+  if (copy.bind && copy.type === 'text') { copy.text = bindTextReal(card, copy.bind) || ''; copy.bind = null; }
+  copy.x = clamp(copy.x + 0.03, -0.05, 0.95); copy.y = clamp(copy.y + 0.04, -0.05, 0.95);
+  card.back.elements.push(copy);
+  selectedEl = copy;
+  commit(); syncBackInputs(); syncElEditor(); view.needsRender = true;
+}
 
 /* ═══════════════════ Export engine ═══════════════════ */
 function canvasToBlob(canvas, type, quality) {
@@ -2289,6 +3275,7 @@ async function jpegBytesOf(canvas) {
 
 /* one card per page, at print size (+ bleed + optional marks) */
 async function buildCardsPdf(cards, sides, opts) {
+  await ensureFonts();
   const pdf = new PdfWriter();
   const { w: tw, h: th } = trimSize();
   const bleed = opts.bleed ? BLEED_IN : 0;
@@ -2323,6 +3310,7 @@ async function buildCardsPdf(cards, sides, opts) {
 
 /* imposed duplex-ready sheets */
 async function buildSheetPdf(cards, sheetKey, sides, opts) {
+  await ensureFonts();
   const pdf = new PdfWriter();
   const L = sheetLayout(sheetKey, opts);
   const wPt = L.W * 72, hPt = L.H * 72;
@@ -2338,10 +3326,11 @@ async function buildSheetPdf(cards, sheetKey, sides, opts) {
 }
 
 async function buildContactPdf(cards, sheetKey) {
+  await ensureFonts();
   const pdf = new PdfWriter();
-  const perPage = 9;
+  const perPage = contactLayout(sheetKey).per;
   for (let start = 0; start < cards.length; start += perPage) {
-    const canvas = renderContactSheet(cards.slice(start, start + perPage), sheetKey, 150);
+    const canvas = renderContactSheet(cards.slice(start, start + perPage), sheetKey, 200);
     const bytes = await jpegBytesOf(canvas);
     pdf.addPage(SHEETS[sheetKey].w * 72, SHEETS[sheetKey].h * 72,
       [{ bytes, w: canvas.width, h: canvas.height, x: 0, y: 0, dw: SHEETS[sheetKey].w * 72, dh: SHEETS[sheetKey].h * 72 }]);
@@ -2394,7 +3383,10 @@ async function runExport() {
 }
 
 /* ═══════════════════ Printing ═══════════════════ */
-async function printCanvases(canvases) {
+/* Print canvases at their true physical size (ppi = pixels per inch they were
+   rendered at). pageSize: CSS @page size for full sheets, or null for cards. */
+async function printCanvases(canvases, ppi = 200, pageSize = null) {
+  document.querySelectorAll('.print-root, #printPageStyle').forEach(n => n.remove());
   const root = document.createElement('div');
   root.className = 'print-root';
   for (const c of canvases) {
@@ -2402,13 +3394,21 @@ async function printCanvases(canvases) {
     page.className = 'print-page';
     const img = document.createElement('img');
     img.src = c.toDataURL('image/jpeg', 0.94);
-    await new Promise(r => { img.onload = r; });
+    img.style.width = (c.width / ppi) + 'in';
+    img.style.height = (c.height / ppi) + 'in';
+    await new Promise(r => { img.onload = r; img.onerror = r; });
     page.appendChild(img);
     root.appendChild(page);
   }
+  const st = document.createElement('style');
+  st.id = 'printPageStyle';
+  const orient = canvases[0] && canvases[0].width > canvases[0].height ? 'landscape' : 'portrait';
+  st.textContent = pageSize ? `@page { size: ${pageSize} ${orient}; margin: 0; }` : '@page { margin: 0.25in; }';
+  document.head.appendChild(st);
   document.body.appendChild(root);
+  const cleanup = () => { root.remove(); st.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
   window.print();
-  setTimeout(() => root.remove(), 1000);
 }
 
 async function runPrint() {
@@ -2417,6 +3417,7 @@ async function runPrint() {
   if (!cards.length) { toast('Nothing to print yet.'); return; }
   const sides = ex.sides === 'both' ? ['front', 'back'] : [ex.sides];
   await showProgress('Preparing print pages…');
+  await ensureFonts();
   try {
     const canvases = [];
     if (ex.pdfMode === 'sheet-a4' || ex.pdfMode === 'sheet-letter') {
@@ -2433,7 +3434,8 @@ async function runPrint() {
       }
     }
     hideProgress();
-    await printCanvases(canvases);
+    const sheetMode = ex.pdfMode === 'sheet-a4' || ex.pdfMode === 'sheet-letter';
+    await printCanvases(canvases, 200, sheetMode ? (ex.pdfMode === 'sheet-letter' ? 'letter' : 'A4') : null);
   } catch (err) {
     hideProgress();
     toast('Print failed: ' + err.message);
@@ -2620,31 +3622,13 @@ async function loadDemoProject() {
     commit();
     syncAllInputs(); renderTimeline(); renderMediaList();
     zoomFit(); requestRender();
-    toast('Demo project loaded — every value is editable.');
+    toast('Three sample cards. Click anything on a card to change it.');
   } finally {
     hideProgress();
   }
 }
 
 /* ═══════════════════ Front layout presets ═══════════════════ */
-function applyFrontLayout(front, layoutId) {
-  front.layout = layoutId;
-  switch (layoutId) {
-    case 'full-bleed':  front.borderW = 0; front.borderBottom = 0; break;
-    case 'gallery':     front.borderW = 0.25; front.borderBottom = 0; front.borderColor = '#ffffff'; break;
-    case 'editorial':   front.borderW = 0.2;  front.borderBottom = 0.5; break;
-    case 'minimal':     front.borderW = 0.125; front.borderBottom = 0; break;
-    case 'wide-bottom': front.borderW = 0.22; front.borderBottom = 0.75; break;
-    case 'museum':      front.borderW = 0.3;  front.borderBottom = 0.65; break;
-    /* custom: keep current values */
-  }
-  if (layoutId === 'editorial' || layoutId === 'wide-bottom' || layoutId === 'museum') {
-    front.show.title = true;
-    front.show.caption = layoutId !== 'wide-bottom' ? front.show.caption : true;
-  }
-  if (layoutId === 'museum') front.show.caption = true;
-}
-
 /* Apply a declarative front preset to the front model (keeps photo transform). */
 function applyFrontPreset(front, presetId) {
   const p = FRONT_PRESETS.find(x => x.id === presetId);
@@ -2660,6 +3644,9 @@ function applyFrontPreset(front, presetId) {
   front.creditPlace = d.creditPlace || front.creditPlace;
   front.creditFormat = d.creditFormat || front.creditFormat;
   front.show = Object.assign({ title: false, caption: false, website: false, project: false, copyright: false, logo: false }, d.show);
+  front.accent = d.accent || null;
+  front.cancel = d.cancel !== undefined ? d.cancel : front.cancel;
+  if (d.tagline && (front.tagline == null)) front.tagline = d.tagline;
 }
 
 /* Rebuild a card's back from a declarative back preset (preserves QR text). */
@@ -2670,12 +3657,13 @@ function applyBackPreset(card, presetId) {
   if (card.back.qrOn) ensureQrElement(card);
 }
 
-/* ═══════════════════ Timeline & media list ═══════════════════ */
+/* ═══════════════════ Timeline, photos & layout gallery ═══════════════════ */
 const thumbCache = new Map();   /* cardId → dataURL */
+const ICON = (id) => `<svg aria-hidden="true"><use href="#${id}"/></svg>`;
 
 function cardThumb(card) {
-  const c = renderCardSide(card, 'front', 26, { export: false });
-  return c.toDataURL('image/jpeg', 0.7);
+  const c = renderCardSide(card, 'front', 30, { export: false });
+  return c.toDataURL('image/jpeg', 0.72);
 }
 const renderTimelineThumbSoon = debounce((idx) => {
   const card = state.cards[idx];
@@ -2683,8 +3671,6 @@ const renderTimelineThumbSoon = debounce((idx) => {
   thumbCache.set(card.id, cardThumb(card));
   const img = $(`.tl-card[data-id="${card.id}"] img`);
   if (img) img.src = thumbCache.get(card.id);
-  const mi = $(`.media-item[data-card="${card.id}"] img`);
-  if (mi && imageStore.get(card.imageId)) mi.src = imageStore.get(card.imageId).dataURL;
 }, 350);
 
 function renderTimeline() {
@@ -2692,12 +3678,13 @@ function renderTimeline() {
   tl.innerHTML = '';
   state.cards.forEach((card, i) => {
     if (!thumbCache.has(card.id)) thumbCache.set(card.id, cardThumb(card));
-    const btn = document.createElement('button');
+    const btn = document.createElement('div');
     btn.className = 'tl-card' + (i === state.sel ? ' selected' : '');
     btn.dataset.id = card.id;
+    btn.tabIndex = 0;
     btn.setAttribute('role', 'option');
     btn.setAttribute('aria-selected', i === state.sel ? 'true' : 'false');
-    btn.setAttribute('aria-label', `Postcard ${i + 1}: ${card.meta.title || card.name}`);
+    btn.setAttribute('aria-label', `Card ${i + 1}: ${card.meta.title || card.name}`);
     btn.draggable = true;
     const img = document.createElement('img');
     img.src = thumbCache.get(card.id);
@@ -2709,25 +3696,26 @@ function renderTimeline() {
     const actions = document.createElement('span');
     actions.className = 'tl-actions';
     const dup = document.createElement('button');
-    dup.className = 'tl-act'; dup.title = 'Duplicate'; dup.textContent = '⧉';
-    dup.setAttribute('aria-label', `Duplicate postcard ${i + 1}`);
+    dup.className = 'tl-act'; dup.title = 'Duplicate card'; dup.innerHTML = ICON('i-plus');
+    dup.setAttribute('aria-label', `Duplicate card ${i + 1}`);
     dup.addEventListener('click', (e) => { e.stopPropagation(); duplicateCard(i); });
     const del = document.createElement('button');
-    del.className = 'tl-act'; del.title = 'Delete'; del.textContent = '✕';
-    del.setAttribute('aria-label', `Delete postcard ${i + 1}`);
+    del.className = 'tl-act'; del.title = 'Remove card'; del.innerHTML = ICON('i-close');
+    del.setAttribute('aria-label', `Remove card ${i + 1}`);
     del.addEventListener('click', (e) => { e.stopPropagation(); deleteCard(i); });
     actions.append(dup, del);
     btn.appendChild(actions);
     btn.addEventListener('click', () => selectCard(i));
-    /* drag to reorder */
-    btn.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; });
-    btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('drag-over'); });
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCard(i); } });
+    btn.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/x-card', String(i)); e.dataTransfer.effectAllowed = 'move'; });
+    btn.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('text/x-card')) { e.preventDefault(); btn.classList.add('drag-over'); } });
     btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
     btn.addEventListener('drop', (e) => {
-      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData('text/x-card'), 10);
       btn.classList.remove('drag-over');
-      const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
-      if (Number.isInteger(from) && from !== i) reorderCard(from, i);
+      if (!Number.isInteger(from)) return;
+      e.preventDefault(); e.stopPropagation();
+      if (from !== i) reorderCard(from, i);
     });
     tl.appendChild(btn);
   });
@@ -2737,30 +3725,120 @@ function renderTimeline() {
 function renderMediaList() {
   const list = $('#mediaList');
   list.innerHTML = '';
+  const cur = currentCard();
   for (const card of state.cards) {
     const im = imageStore.get(card.imageId);
     if (!im) continue;
     const btn = document.createElement('button');
-    btn.className = 'media-item used';
+    btn.className = 'media-item' + (card === cur ? ' current' : '');
     btn.dataset.card = card.id;
     btn.setAttribute('role', 'listitem');
-    btn.setAttribute('aria-label', `Photo ${im.name}`);
+    btn.title = im.name;
+    btn.setAttribute('aria-label', `Go to the card for ${im.name}`);
     const img = document.createElement('img');
-    img.src = im.dataURL; img.alt = im.name; img.loading = 'lazy';
+    img.src = im.thumb || im.dataURL; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
     btn.appendChild(img);
-    const name = document.createElement('span');
-    name.className = 'media-name'; name.textContent = im.name;
-    btn.appendChild(name);
     btn.addEventListener('click', () => selectCard(state.cards.indexOf(card)));
     list.appendChild(btn);
   }
 }
 
+/* Layout gallery — every layout drawn with the current card's own photo and
+   words, so what you click is what you get. Thumbnails render in idle time. */
+const tplState = { side: 'front', key: '', job: 0 };
+function tplSide() { return tplState.side; }
+function renderTemplates(force = false) {
+  const grid = $('#tplGrid');
+  if (!grid) return;
+  const card = currentCard();
+  const side = tplSide();
+  const presets = side === 'front' ? FRONT_PRESETS : BACK_PRESETS;
+  const { w: tw, h: th } = trimSize();
+  const key = `${side}:${presets.length}:${tw}x${th}`;
+  if (force || tplState.key !== key) {
+    tplState.key = key;
+    grid.innerHTML = '';
+    for (const p of presets) {
+      const b = document.createElement('button');
+      b.className = 'tpl'; b.dataset.id = p.id; b.setAttribute('role', 'listitem');
+      b.setAttribute('aria-label', `${p.name} layout`);
+      b.innerHTML = `<span class="tpl-thumb"><span class="tpl-svg">${p.thumbnailSvg}</span></span><span class="tpl-name">${p.name}<span class="tpl-tag">${p.tag || ''}</span></span>`;
+      b.addEventListener('click', () => applyTemplate(side, p.id));
+      grid.appendChild(b);
+    }
+  }
+  markActiveTemplate();
+  if (!card) { $('#tplNote').textContent = 'Add a photo and every layout is previewed with it.'; return; }
+  $('#tplNote').textContent = side === 'front' ? 'Previewed with your photo. Click one to use it.' : 'Previewed with your words. Click one to use it.';
+  /* draw live thumbnails a few at a time so typing stays smooth */
+  const job = ++tplState.job;
+  const tiles = $$('.tpl', grid);
+  const tileW = (tiles[0] && tiles[0].querySelector('.tpl-thumb').clientWidth) || 120;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const ppi = Math.max(12, (tileW * 0.86 * dpr) / (tw + 0.001));
+  let i = 0;
+  const step = (deadline) => {
+    if (job !== tplState.job) return;
+    const t0 = performance.now();
+    while (i < tiles.length && (deadline ? deadline.timeRemaining() > 4 : performance.now() - t0 < 12)) {
+      const tile = tiles[i++];
+      const id = tile.dataset.id;
+      const clone = { ...card, meta: card.meta, front: deepClone(card.front), back: deepClone(card.back) };
+      if (side === 'front') {
+        if (id !== 'custom') applyFrontPreset(clone.front, id);
+      } else {
+        clone.back = defaultBack(id);
+        if (card.back.qrOn) { clone.back.qrOn = true; clone.back.qrText = card.back.qrText; ensureQrElement(clone); }
+      }
+      const c = renderCardSide(clone, side, ppi, { export: false });
+      c.style.width = (c.width / dpr) + 'px';
+      const th_ = tile.querySelector('.tpl-thumb');
+      th_.replaceChildren(c);
+    }
+    if (i < tiles.length) schedule(step);
+  };
+  const schedule = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 300 }) : setTimeout(() => fn(null), 16));
+  schedule(step);
+}
+const refreshTemplatesSoon = debounce(() => {
+  if (isPanelVisible('templates')) renderTemplates();
+}, 450);
+function markActiveTemplate() {
+  const card = currentCard();
+  const side = tplSide();
+  let active = null;
+  if (card) active = side === 'front' ? frontStyle(card.front) : (BACK_PRESET_IDS.has(card.back.layout) ? card.back.layout : BACK_LAYOUT_ALIAS[card.back.layout] || card.back.layout);
+  $$('#tplGrid .tpl').forEach(t => { const on = t.dataset.id === active; t.classList.toggle('active', on); t.setAttribute('aria-current', on ? 'true' : 'false'); });
+}
+function applyTemplate(side, id) {
+  const card = currentCard();
+  if (!card) { toast('Add a photo first, then choose a layout.'); return; }
+  if (side === 'front') {
+    applyFrontPreset(card.front, id);
+    frontSel = null;
+    if (id === 'split-diptych' && !card.imageId2) toast('This layout takes two photos — add the second one under Photo.');
+    setSide('front');
+    syncFrontInputs();
+  } else {
+    applyBackPreset(card, id);
+    selectedEl = null;
+    setSide('back');
+    syncBackInputs(); syncElEditor();
+  }
+  commit();
+  markActiveTemplate();
+  renderTimelineThumbSoon(state.sel);
+  view.needsRender = true;
+}
+
 function selectCard(i) {
+  if (!state.cards.length) return;
+  finishInlineEdit();
   state.sel = clamp(i, 0, state.cards.length - 1);
-  selectedEl = null;
-  syncAllInputs(); renderTimeline();
+  selectedEl = null; frontSel = null;
+  syncAllInputs(); renderTimeline(); renderMediaList();
   syncElEditor();
+  refreshTemplatesSoon();
   view.needsRender = true;
   const el = $(`.tl-card[data-id="${state.cards[state.sel]?.id}"]`);
   if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -2773,17 +3851,15 @@ function duplicateCard(i) {
   state.cards.splice(i + 1, 0, copy);
   state.sel = i + 1;
   commit(); renderTimeline(); renderMediaList(); syncAllInputs(); view.needsRender = true;
-  toast('Postcard duplicated.');
+  toast('Card duplicated.');
 }
 
 function deleteCard(i) {
-  const card = state.cards[i];
   state.cards.splice(i, 1);
-  /* drop the image if no other card uses it */
-  if (card.imageId && !state.cards.some(c => c.imageId === card.imageId)) imageStore.delete(card.imageId);
-  state.sel = clamp(state.sel >= i ? state.sel - 1 : state.sel, 0, state.cards.length - 1);
-  selectedEl = null;
-  commit(); renderTimeline(); renderMediaList(); syncAllInputs(); view.needsRender = true;
+  state.sel = clamp(state.sel >= i ? state.sel - 1 : state.sel, 0, Math.max(0, state.cards.length - 1));
+  selectedEl = null; frontSel = null;
+  commit(); renderTimeline(); renderMediaList(); syncAllInputs(); refreshTemplatesSoon(); view.needsRender = true;
+  toast('Card removed.', 5000, { label: 'Undo', fn: undo });
 }
 
 function reorderCard(from, to) {
@@ -2791,6 +3867,26 @@ function reorderCard(from, to) {
   state.cards.splice(to, 0, card);
   state.sel = to;
   commit(); renderTimeline(); view.needsRender = true;
+}
+
+/* swap the current card's photo, keeping its layout and words */
+async function replacePhoto(file) {
+  const card = currentCard();
+  if (!card || !file) return;
+  await showProgress('Adding photo…');
+  try {
+    const id = await importPhotoFile(file);
+    card.imageId = id;
+    card.name = sanitizeName(file.name);
+    card.front.tx = { x: 0, y: 0, zoom: 1, rot: 0 };
+    const im = imageStore.get(id);
+    if (im && im.exif) applyExifToCard(card, im.exif);
+    commit(); syncAllInputs(); renderMediaList(); renderTimeline(); refreshTemplatesSoon(); view.needsRender = true;
+    toast('Photo replaced.', 4000, { label: 'Undo', fn: undo });
+  } catch (err) {
+    console.error(err);
+    toast('That file could not be opened as a photo.');
+  } finally { hideProgress(); }
 }
 
 async function handleFiles(fileList) {
@@ -2851,9 +3947,9 @@ function syncCardInputs() {
   $('#gWebsite').value = state.global.website;
   $('#gEmail').value = state.global.email;
   $('#gCopyright').value = state.global.copyright;
-  $('#logoInfo').textContent = state.global.logoId ? 'Logo loaded — enable it on the front or back.' : 'No logo — a placeholder is used where enabled.';
+  $('#logoInfo').textContent = state.global.logoId ? 'Logo ready. Add it from Add → Logo, or tick “Show logo” on the front.' : 'No logo yet.';
+  $('#customSizeRow').hidden = state.size.preset !== 'custom';
   const card = currentCard();
-  $('#mTitle').value = card ? card.meta.title : '';
   $('#mLocation').value = card ? card.meta.location : '';
   $('#mDate').value = card ? card.meta.date : '';
   $('#mEdition').value = card ? card.meta.edition : '';
@@ -2863,10 +3959,45 @@ function syncCardInputs() {
 function syncFrontInputs() {
   const card = currentCard();
   const f = card ? card.front : defaultFront();
-  $$('#frontLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === frontStyle(f)));
-  const isDiptych = frontStyle(f) === 'diptych';
+  markActiveTemplate();
+  const st = frontStyle(f);
+  const preset = FRONT_PRESETS.find(p => p.id === st);
+  const isDiptych = st === 'split-diptych';
   $('#diptychRow').hidden = !isDiptych;
-  if (isDiptych) $('#diptychInfo').textContent = (card && card.imageId2) ? 'Second photo loaded.' : 'The Split Diptych preset places two photos side by side.';
+  if (isDiptych) $('#diptychInfo').textContent = (card && card.imageId2) ? 'Second photo added.' : 'This layout shows two photos side by side.';
+  /* layout colour swatches for layouts that use one */
+  const usesAccent = !!(preset && preset.usesAccent);
+  $('#accentRow').hidden = !usesAccent;
+  if (usesAccent) {
+    const wrap = $('#fAccentSwatches');
+    const cols = preset.accents || [];
+    const cur = f.accent || cols[0];
+    if (wrap.dataset.for !== st) {
+      wrap.dataset.for = st;
+      wrap.innerHTML = '';
+      for (const c of cols) {
+        const b = document.createElement('button');
+        b.className = 'swatch'; b.dataset.color = c; b.style.background = c; b.title = c; b.setAttribute('aria-label', 'Colour ' + c);
+        b.addEventListener('click', () => { const cc = currentCard(); if (!cc) return; cc.front.accent = c; commit(); syncFrontInputs(); requestRender(); });
+        wrap.appendChild(b);
+      }
+      const pick = document.createElement('input');
+      pick.type = 'color'; pick.id = 'fAccent'; pick.title = 'Any colour'; pick.setAttribute('aria-label', 'Any colour');
+      pick.addEventListener('input', (e) => { const cc = currentCard(); if (!cc || syncing) return; cc.front.accent = e.target.value; requestRender(); });
+      pick.addEventListener('change', () => commit());
+      wrap.appendChild(pick);
+    }
+    $$('.swatch', wrap).forEach(sw => sw.classList.toggle('active', sw.dataset.color === cur));
+    $('#fAccent').value = /^#[0-9a-f]{6}$/i.test(cur) ? cur : '#000000';
+  }
+  /* border controls only matter for the bordered layouts */
+  const custom = !!FRONT_RENDERERS[st];
+  const bordered = !custom || st === 'travel-poster' || st === 'editorial-cover';
+  $('#fBorderSwatches').closest('.field').hidden = custom;
+  $('#fBorderW').closest('.field').hidden = !bordered;
+  $('#fBorderBottom').closest('.field').hidden = custom;
+  $('#taglineRow').hidden = st !== 'greetings';
+  $('#fTagline').value = f.tagline != null ? f.tagline : 'Greetings from';
   $('#fBorderW').value = f.borderW;
   $('#fBorderWOut').textContent = fmtIn(f.borderW);
   $('#fBorderBottom').value = f.borderBottom;
@@ -2895,6 +4026,7 @@ function syncFrontInputs() {
   $('#fLogoOn').checked = f.show.logo;
   $('#fTitle').value = card ? card.meta.title : '';
   $('#fCaption').value = card ? card.meta.caption : '';
+  $('#btnReplacePhoto').textContent = card && card.imageId ? 'Replace…' : 'Add photo…';
   $('#creditPlace').value = f.creditPlace;
   $('#creditFormat').value = f.creditFormat;
   $('#creditCustomRow').hidden = f.creditFormat !== 'custom';
@@ -2904,7 +4036,7 @@ function syncFrontInputs() {
 function syncBackInputs() {
   const card = currentCard();
   const b = card ? card.back : defaultBack();
-  $$('#backLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === (BACK_PRESET_IDS.has(b.layout) ? b.layout : BACK_LAYOUT_ALIAS[b.layout] || b.layout)));
+  markActiveTemplate();
   $('#bCaption').value = card ? card.meta.caption : '';
   $('#bStory').value = card ? card.meta.story : '';
   $('#bQrOn').checked = b.qrOn;
@@ -2960,10 +4092,9 @@ function renderElToggles() {
   if (!card) return;
   for (const el of card.back.elements) {
     if (el.type === 'qr' || el.type === 'postmark') continue;
-    const label = EL_LABELS[el.bind || el.type] || 'Element';
-    const div = document.createElement('div');
-    div.className = 'field-check';
+    const label = el.type === 'text' && !el.bind ? `“${(el.text || '').slice(0, 14)}${(el.text || '').length > 14 ? '…' : ''}”` : (el.type === 'box' && el.label ? el.label.charAt(0) + el.label.slice(1).toLowerCase() : EL_LABELS[el.bind || el.type] || 'Element');
     const lab = document.createElement('label');
+    lab.className = 'check';
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.checked = el.visible;
     cb.addEventListener('change', () => {
@@ -2973,27 +4104,29 @@ function renderElToggles() {
     });
     lab.appendChild(cb);
     lab.appendChild(document.createTextNode(' ' + label));
-    div.appendChild(lab);
-    wrap.appendChild(div);
+    wrap.appendChild(lab);
   }
 }
 
 function syncElEditor() {
   const box = $('#elEditor');
-  if (!selectedEl) { box.hidden = true; return; }
+  if (!selectedEl) { box.hidden = true; $('#backWordsHead').classList.add('first'); return; }
   box.hidden = false;
   $('#elName').textContent = EL_LABELS[selectedEl.bind || selectedEl.type] || 'Element';
-  const isText = selectedEl.type === 'text';
+  const isText = isTextual(selectedEl);
   $('#elTextRow').hidden = !isText;
+  $('#elStyleRow').hidden = !(selectedEl.type === 'text' || selectedEl.type === 'box' || selectedEl.type === 'lines' || selectedEl.type === 'divider');
   if (isText) {
-    $('#elText').value = selectedEl.bind ? bindText(currentCard(), selectedEl.bind) : selectedEl.text;
+    $('#elText').value = elValue(currentCard(), selectedEl);
     buildTokenBar();
   }
+  $('#elDup').disabled = ['qr', 'postmark', 'airmail'].includes(selectedEl.type);
   $('#elSize').value = selectedEl.size;
   $('#elFont').value = selectedEl.font;
   $('#elAlign').value = selectedEl.align;
   $('#elColor').value = /^#[0-9a-f]{6}$/i.test(selectedEl.color) ? selectedEl.color : '#2a2a2a';
-  $('#elHide').textContent = (selectedEl.type === 'text' && !selectedEl.bind) ? 'Delete element' : 'Hide element';
+  $('#elHide').textContent = (selectedEl.type === 'text' && !selectedEl.bind) ? 'Delete' : 'Hide';
+  $('#backWordsHead').classList.remove('first');
 }
 
 /* quick-insert token chips in the Text Inspector */
@@ -3040,6 +4173,26 @@ function syncExportInputs() {
   $('#pdfOptions').style.display = ex.format === 'pdf' ? '' : 'none';
   $('#duplexEdgeRow').style.display = ex.pdfMode.startsWith('sheet') ? '' : 'none';
   $('#projectFileName').value = state.projectName;
+  updateExportSummary();
+}
+
+function updateExportSummary() {
+  const ex = state.export;
+  const n = ex.scope === 'current' ? (currentCard() ? 1 : 0) : state.cards.length;
+  const sides = ex.sides === 'both' ? 2 : 1;
+  const { w, h } = trimSize();
+  const b = ex.bleed ? BLEED_IN * 2 : 0;
+  const px = `${Math.round((w + b) * DPI)} × ${Math.round((h + b) * DPI)} px`;
+  let what;
+  if (ex.format === 'pdf') {
+    what = ex.pdfMode === 'cards' ? `a PDF with ${n * sides} page${n * sides === 1 ? '' : 's'} at card size`
+      : ex.pdfMode === 'contact' ? `a contact-sheet PDF of ${n} card${n === 1 ? '' : 's'}`
+      : `a PDF of ${ex.pdfMode === 'sheet-letter' ? 'Letter' : 'A4'} sheets, backs mirrored for double-sided printing`;
+  } else {
+    const files = n * sides;
+    what = files > 1 ? `${files} ${ex.format.toUpperCase()} files in a ZIP (${px} each, 300 DPI)` : `one ${ex.format.toUpperCase()} at ${px}, 300 DPI`;
+  }
+  $('#expSummary').textContent = n ? `You'll get ${what}.` : 'Add a card first.';
 }
 
 function syncAllInputs() {
@@ -3076,7 +4229,8 @@ function bindCardInputs() {
     state.size.w = clamp(unitToIn(w, u), 1, 30);
     state.size.h = clamp(unitToIn(h, u), 1, 30);
     state.size.preset = 'custom';
-    state.size.orient = state.size.w >= state.size.h ? state.size.orient : state.size.orient;
+    /* typed dimensions decide the orientation (otherwise 4 × 6 would flip back) */
+    state.size.orient = state.size.w >= state.size.h ? 'landscape' : 'portrait';
     commit(); syncCardInputs(); zoomFit(); requestRender();
   };
   $('#customW').addEventListener('change', applyCustom);
@@ -3103,7 +4257,7 @@ function bindCardInputs() {
     if (alsoId && document.activeElement !== $(alsoId)) $(alsoId).value = e.target.value;
     commit(); requestRender();
   }, 350));
-  m('#mTitle', 'title', '#fTitle'); m('#mLocation', 'location'); m('#mDate', 'date');
+  m('#mLocation', 'location'); m('#mDate', 'date');
   m('#mEdition', 'edition'); m('#mCamera', 'camera');
 
   $('#btnLogoUpload').addEventListener('click', () => $('#logoInput').click());
@@ -3113,35 +4267,16 @@ function bindCardInputs() {
     const dataURL = await readFileAsDataURL(file);
     state.global.logoId = await addImageFromDataURL(dataURL, file.name);
     commit(); syncCardInputs(); requestRender();
-    toast('Logo added. Enable it under Front → Text or Back → Elements.');
+    toast('Logo added. Put it on the back from Add → Logo, or tick “Show logo” on the front.');
     e.target.value = '';
   });
   $('#btnLogoClear').addEventListener('click', () => {
-    if (state.global.logoId) imageStore.delete(state.global.logoId);
     state.global.logoId = null;
     commit(); syncCardInputs(); requestRender();
   });
 }
 
-function presetCard(preset, onPick) {
-  const b = document.createElement('button');
-  b.className = 'preset-tile'; b.dataset.id = preset.id;
-  b.setAttribute('aria-label', preset.name);
-  b.innerHTML = `<span class="preset-thumb">${preset.thumbnailSvg}</span><span class="preset-name">${preset.name}</span>`;
-  b.addEventListener('click', onPick);
-  return b;
-}
-
 function bindFrontInputs() {
-  const wrap = $('#frontLayouts');
-  for (const p of FRONT_PRESETS) {
-    wrap.appendChild(presetCard(p, () => {
-      const card = currentCard(); if (!card) return;
-      applyFrontPreset(card.front, p.id);
-      if (p.id === 'split-diptych' && !card.imageId2) toast('Add a second photo below for the diptych.');
-      commit(); syncFrontInputs(); syncCardInputs(); requestRender();
-    }));
-  }
   const front = () => currentCard() ? currentCard().front : null;
 
   /* crop aspect chips */
@@ -3192,15 +4327,15 @@ function bindFrontInputs() {
 
   $('#fBorderW').addEventListener('input', (e) => {
     const f = front(); if (!f || syncing) return;
-    f.borderW = parseFloat(e.target.value); f.layout = 'custom'; f.style = 'custom';
+    f.borderW = parseFloat(e.target.value);
+    if (!FRONT_RENDERERS[frontStyle(f)]) { f.layout = 'custom'; f.style = 'custom'; markActiveTemplate(); }
     $('#fBorderWOut').textContent = fmtIn(f.borderW);
-    $$('#frontLayouts .preset-tile').forEach(ch => ch.classList.toggle('active', ch.dataset.id === 'custom'));
     requestRender();
   });
   $('#fBorderW').addEventListener('change', commit);
   $('#fBorderBottom').addEventListener('input', (e) => {
     const f = front(); if (!f || syncing) return;
-    f.borderBottom = parseFloat(e.target.value); f.layout = 'custom'; f.style = 'custom';
+    f.borderBottom = parseFloat(e.target.value); f.layout = 'custom'; f.style = 'custom'; markActiveTemplate();
     $('#fBorderBottomOut').textContent = fmtIn(f.borderBottom);
     requestRender();
   });
@@ -3229,6 +4364,20 @@ function bindFrontInputs() {
   $('#fRotR').addEventListener('click', () => { const f = front(); if (f) { f.tx.rot = (f.tx.rot + 90) % 360; commit(); requestRender(); } });
   $('#fReset').addEventListener('click', () => { const f = front(); if (f) { f.tx = { x: 0, y: 0, zoom: 1, rot: 0 }; commit(); syncFrontInputs(); requestRender(); } });
 
+  /* replace the photo */
+  $('#btnReplacePhoto').addEventListener('click', () => $('#replaceInput').click());
+  $('#replaceInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!currentCard()) handleFiles([file]); else replacePhoto(file);
+  });
+  $('#fTagline').addEventListener('input', debounce((e) => {
+    const card = currentCard(); if (!card) return;
+    card.front.tagline = e.target.value;
+    commit(); requestRender();
+  }, 300));
+
   /* diptych: second photo */
   $('#btnDiptychUpload').addEventListener('click', () => $('#diptychInput').click());
   $('#diptychInput').addEventListener('change', async (e) => {
@@ -3242,7 +4391,6 @@ function bindFrontInputs() {
   });
   $('#btnDiptychClear').addEventListener('click', () => {
     const card = currentCard(); if (!card) return;
-    if (card.imageId2 && !state.cards.some(c => c.imageId === card.imageId2 || c.imageId2 === card.imageId2 && c !== card)) imageStore.delete(card.imageId2);
     card.imageId2 = null;
     commit(); syncFrontInputs(); requestRender();
   });
@@ -3258,9 +4406,8 @@ function bindFrontInputs() {
   $('#fTitle').addEventListener('input', debounce((e) => {
     const card = currentCard(); if (!card) return;
     card.meta.title = e.target.value;
-    if (document.activeElement !== $('#mTitle')) $('#mTitle').value = e.target.value;
     commit(); requestRender();
-  }, 350));
+  }, 300));
   $('#fCaption').addEventListener('input', debounce((e) => {
     const card = currentCard(); if (!card) return;
     card.meta.caption = e.target.value;
@@ -3287,21 +4434,11 @@ function bindFrontInputs() {
       c.front.tx = tx;   /* keep each photo's own crop */
     }
     commit(); renderTimeline(); requestRender();
-    toast(`Front design applied to all ${state.cards.length} postcards.`);
+    toast(`Front layout used on all ${state.cards.length} cards.`, 4000, { label: 'Undo', fn: undo });
   });
 }
 
 function bindBackInputs() {
-  const wrap = $('#backLayouts');
-  for (const p of BACK_PRESETS) {
-    wrap.appendChild(presetCard(p, () => {
-      const card = currentCard(); if (!card) return;
-      applyBackPreset(card, p.id);
-      selectedEl = null;
-      commit(); syncBackInputs(); syncElEditor(); requestRender();
-      setSide('back');
-    }));
-  }
   $('#bCaption').addEventListener('input', debounce((e) => {
     const card = currentCard(); if (!card) return;
     card.meta.caption = e.target.value;
@@ -3413,30 +4550,14 @@ function bindBackInputs() {
 
   /* selected element editor */
   $('#elText').addEventListener('input', debounce((e) => {
-    if (!selectedEl || selectedEl.type !== 'text') return;
+    if (!selectedEl || !isTextual(selectedEl)) return;
     const card = currentCard();
-    if (selectedEl.bind) {
-      /* editing a bound element writes through to its source */
-      const v = e.target.value;
-      switch (selectedEl.bind) {
-        case 'caption': card.meta.caption = v; break;
-        case 'story': card.meta.story = v; break;
-        case 'date': card.meta.date = v; break;
-        case 'location': card.meta.location = v; break;
-        case 'title': card.meta.title = v; break;
-        case 'website': state.global.website = v; break;
-        case 'project': state.global.project = v; break;
-        case 'copyright': state.global.copyright = v; break;
-        case 'credit': selectedEl.bind = null; selectedEl.text = v; break;
-        case 'meta': selectedEl.bind = null; selectedEl.text = v; break;
-        default: selectedEl.bind = null; selectedEl.text = v;
-      }
-    } else selectedEl.text = e.target.value;
+    setElValue(card, selectedEl, e.target.value);
     commit(); requestRender();
   }, 350));
   $('#elSize').addEventListener('input', (e) => {
     if (!selectedEl) return;
-    selectedEl.size = clamp(parseFloat(e.target.value) || 9, 4, 72);
+    selectedEl.size = clamp(parseFloat(e.target.value) || 9, 4, 96);
     requestRender();
   });
   $('#elSize').addEventListener('change', commit);
@@ -3456,14 +4577,9 @@ function bindBackInputs() {
     selectedEl = null;
     commit(); syncBackInputs(); syncElEditor(); requestRender();
   });
-  $('#bAddText').addEventListener('click', () => {
-    const card = currentCard(); if (!card) return;
-    const el = backElement('text', { x: 0.3, y: 0.44, w: 0.4, h: 0.12, text: 'Your text', size: 9, align: 'center' });
-    card.back.elements.push(el);
-    selectedEl = el;
-    commit(); syncElEditor(); requestRender();
-    setSide('back');
-  });
+  $('#bAddText').addEventListener('click', () => addToBack('text'));
+  $('#elDup').addEventListener('click', duplicateSelected);
+  $$('[data-add]').forEach(b => b.addEventListener('click', () => addToBack(b.dataset.add)));
   $('#elDeselect').addEventListener('click', () => { selectedEl = null; syncElEditor(); requestRender(); });
 
   $('#bApplyAll').addEventListener('click', () => {
@@ -3474,8 +4590,57 @@ function bindBackInputs() {
       c.back.elements.forEach(el => { el.id = uid(); });
     }
     commit(); renderTimeline(); requestRender();
-    toast(`Back design applied to all ${state.cards.length} postcards.`);
+    toast(`Back layout used on all ${state.cards.length} cards.`, 4000, { label: 'Undo', fn: undo });
   });
+}
+
+/* Add something from the Add panel to the back of the current card */
+function addToBack(kind) {
+  const card = currentCard();
+  if (!card) { toast('Add a photo first — then you can add things to the back.'); return; }
+  let el = null;
+  const els = card.back.elements;
+  switch (kind) {
+    case 'text': el = backElement('text', { x: 0.08, y: 0.4, w: 0.36, h: 0.12, text: 'Your words', size: 10 }); break;
+    case 'heading': el = backElement('text', { x: 0.06, y: 0.08, w: 0.42, h: 0.16, text: 'A heading', size: 22, font: 'editorial', lineHeight: 1.05 }); break;
+    case 'note': el = backElement('text', { x: 0.08, y: 0.3, w: 0.36, h: 0.2, text: 'Wish you were here', size: 18, font: 'editorial', style: 'italic', color: '#2a4d8f', lineHeight: 1.1 }); break;
+    case 'lines': el = backElement('lines', { x: 0.05, y: 0.3, w: 0.41, h: 0.5, lines: 6, color: '#cfc9bd' }); break;
+    case 'divider': el = backElement('divider', { x: 0.5, y: 0.08, w: 0.0035, h: 0.84 }); break;
+    case 'logo': {
+      el = backElement('logo', { x: 0.05, y: 0.78, w: 0.16, h: 0.13 });
+      if (!state.global.logoId) { $('#logoInput').click(); }
+      break;
+    }
+    case 'stamp': {
+      const st = els.find(e => e.type === 'stamp');
+      if (st) { st.visible = true; selectedEl = st; commit(); syncBackInputs(); syncElEditor(); setSide('back'); toast('The stamp box is already on this card.'); return; }
+      el = backElement('stamp', { x: 0.855, y: 0.055, w: 0.115, h: 0.24 });
+      break;
+    }
+    case 'postmark': {
+      el = ensurePostmark(card);
+      el.visible = true;
+      selectedEl = el;
+      commit(); syncBackInputs(); syncElEditor(); setSide('back');
+      return;
+    }
+    case 'qr': {
+      card.back.qrOn = true;
+      ensureQrElement(card);
+      if (!card.back.qrText) card.back.qrText = state.global.website || '';
+      selectedEl = qrElement(card);
+      commit(); syncBackInputs(); syncElEditor(); setSide('back');
+      openInspPage('back');
+      if (!card.back.qrText) { toast('Type the web address for the QR code under Back → QR code.'); if (!isNarrow()) $('#bQrText').focus(); }
+      return;
+    }
+  }
+  if (!el) return;
+  els.push(el);
+  selectedEl = el;
+  commit(); syncBackInputs(); syncElEditor();
+  setSide('back');
+  if (isNarrow()) closeSheets();
 }
 
 function ensureQrElement(card) {
@@ -3512,7 +4677,7 @@ function bindExportInputs() {
   $('#customPattern').addEventListener('input', debounce((e) => { state.export.custom = e.target.value; commit(); }, 400));
   $('#projectFileName').addEventListener('input', debounce((e) => { state.projectName = e.target.value || 'project'; commit(); }, 400));
 
-  $('#btnExport').addEventListener('click', runExport);
+  $('#btnExport').addEventListener('click', async () => { await runExport(); });
   $('#btnPrint').addEventListener('click', runPrint);
   $('#btnDuplexPreview').addEventListener('click', () => {
     renderDuplexPreview();
@@ -3593,44 +4758,106 @@ function bindExportInputs() {
 }
 
 /* ═══════════════════ App chrome ═══════════════════ */
-function setSide(side) {
-  state.ui.side = side;
-  if (state.ui.view === 'front' || state.ui.view === 'back') state.ui.view = side;
-  $('#tabFront').classList.toggle('active', side === 'front');
-  $('#tabFront').setAttribute('aria-selected', side === 'front');
-  $('#tabBack').classList.toggle('active', side === 'back');
-  $('#tabBack').setAttribute('aria-selected', side === 'back');
+function syncSideUi() {
+  const side = state.ui.side;
+  $$('.insp-tab').forEach(t => {
+    const on = t.dataset.page === side;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on);
+  });
+  $$('.insp-page').forEach(p => p.classList.toggle('active', p.dataset.page === side));
   $$('.view-seg [data-view]').forEach(b => {
     const on = b.dataset.view === state.ui.view;
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', on);
   });
+  /* the layout gallery follows the side being edited */
+  if (tplState.side !== side) { tplState.side = side; syncTplSeg(); if (isPanelVisible('templates')) renderTemplates(); }
+}
+function setSide(side) {
+  finishInlineEdit();
+  state.ui.side = side;
+  if (state.ui.view === 'front' || state.ui.view === 'back') state.ui.view = side;
   if (side === 'front' && selectedEl) { selectedEl = null; syncElEditor(); }
+  if (side === 'back') frontSel = null;
+  syncSideUi();
   view.needsRender = true;
 }
-
 function setView(v) {
+  finishInlineEdit();
   state.ui.view = v;
   if (v === 'front' || v === 'back') state.ui.side = v;
-  $$('.view-seg [data-view]').forEach(b => {
-    const on = b.dataset.view === v;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-selected', on);
-  });
-  $('#tabFront').classList.toggle('active', state.ui.side === 'front');
-  $('#tabBack').classList.toggle('active', state.ui.side === 'back');
+  if (v === 'sheet') { selectedEl = null; frontSel = null; syncElEditor(); }
+  syncSideUi();
   zoomFit();
+}
+function openInspPage(page) {
+  if (page === 'front' || page === 'back') setSide(page);
 }
 
 function setTheme(t, save = true) {
   document.documentElement.dataset.theme = t;
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])') || (() => { const m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); return m; })();
+  meta.content = t === 'dark' ? '#171614' : '#f4f1ea';
   if (save) { try { localStorage.setItem('postcard-press-theme', t); } catch {} }
+}
+
+/* ── panels: left drawer on desktop; one bottom sheet at a time on phones ── */
+let activePanel = 'templates';
+function isPanelVisible(name) {
+  if (name !== activePanel) return false;
+  return isNarrow() ? $('#drawer').classList.contains('open') : !$('#app').classList.contains('fullscreen-preview');
+}
+function syncTplSeg() {
+  $('#tplFront').classList.toggle('active', tplState.side === 'front');
+  $('#tplFront').setAttribute('aria-pressed', tplState.side === 'front');
+  $('#tplBack').classList.toggle('active', tplState.side === 'back');
+  $('#tplBack').setAttribute('aria-pressed', tplState.side === 'back');
+}
+function showPanel(name) {
+  const narrow = isNarrow();
+  if (narrow) {
+    const sheetOpen = name === 'edit' ? $('#inspector').classList.contains('open') : ($('#drawer').classList.contains('open') && activePanel === name);
+    closeSheets();
+    if (sheetOpen) { setRailActive(null); return; }   /* tapping the active tab again closes it */
+    if (name === 'edit') { $('#inspector').classList.add('open'); setRailActive('edit'); view.needsRender = true; return; }
+    $('#drawer').classList.add('open');
+  }
+  activePanel = name;
+  $$('.dpanel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+  setRailActive(name);
+  if (name === 'templates') renderTemplates();
+  if (name === 'photos') renderMediaList();
+  view.needsRender = true;
+}
+function syncSheetClass() {
+  $('#app').classList.toggle('sheet-open', isNarrow() && ($('#drawer').classList.contains('open') || $('#inspector').classList.contains('open')));
+}
+function setRailActive(name) {
+  syncSheetClass();
+  $$('.rail-btn').forEach(b => { const on = b.dataset.panel === name; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+}
+function closeSheets() {
+  $('#drawer').classList.remove('open');
+  $('#inspector').classList.remove('open');
+  if (isNarrow()) setRailActive(null);
+  syncSheetClass();
+  view.needsRender = true;
+}
+/* kept for older call sites */
+function openMobilePanel(which) { showPanel(which === 'media' ? 'photos' : 'edit'); }
+function closeMobilePanels() { closeSheets(); }
+
+function openExport() {
+  finishInlineEdit();
+  syncExportInputs();
+  $('#dlgExport').showModal();
 }
 
 function bindChrome() {
   $$('.view-seg [data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
-  $('#tabFront').addEventListener('click', () => setSide('front'));
-  $('#tabBack').addEventListener('click', () => setSide('back'));
+  $$('.insp-tab').forEach(t => t.addEventListener('click', () => setSide(t.dataset.page)));
+  $('#btnFlip').addEventListener('click', () => setSide(state.ui.side === 'front' ? 'back' : 'front'));
   $('#btnUndo').addEventListener('click', undo);
   $('#btnRedo').addEventListener('click', redo);
   $('#btnTheme').addEventListener('click', () => {
@@ -3643,13 +4870,17 @@ function bindChrome() {
   });
   $('#btnFullscreen').addEventListener('click', () => {
     $('#app').classList.toggle('fullscreen-preview');
-    setTimeout(zoomFit, 50);
+    $('#btnFullscreen').setAttribute('aria-pressed', $('#app').classList.contains('fullscreen-preview'));
+    setTimeout(zoomFit, 30);
   });
-  $('#btnExportOpen').addEventListener('click', () => {
-    openInspPage('export');
-    if (window.matchMedia('(max-width: 900px)').matches) openMobilePanel('inspector');
-  });
-  $('#btnSupport').addEventListener('click', () => $('#dlgSupport').showModal());
+  $('#btnExportOpen').addEventListener('click', openExport);
+  $('#brandHome').addEventListener('click', (e) => { e.preventDefault(); zoomFit(); });
+
+  /* rail / tab bar */
+  $$('.rail-btn').forEach(b => b.addEventListener('click', () => showPanel(b.dataset.panel)));
+  $$('[data-close-sheet]').forEach(b => b.addEventListener('click', closeSheets));
+  $('#tplFront').addEventListener('click', () => { tplState.side = 'front'; syncTplSeg(); renderTemplates(); if (state.ui.view !== 'both') setSide('front'); });
+  $('#tplBack').addEventListener('click', () => { tplState.side = 'back'; syncTplSeg(); renderTemplates(); if (state.ui.view !== 'both') setSide('back'); });
 
   /* zoom hud */
   $('#btnZoomIn').addEventListener('click', () => setZoom(view.zoom * 1.25));
@@ -3657,9 +4888,6 @@ function bindChrome() {
   $('#btnZoomFit').addEventListener('click', zoomFit);
   $('#btnZoom100').addEventListener('click', zoomActual);
   $('#zoomLevel').addEventListener('click', zoomFit);
-
-  /* inspector tabs */
-  $$('.insp-tab').forEach(t => t.addEventListener('click', () => openInspPage(t.dataset.page)));
 
   /* uploads */
   const openPicker = () => $('#fileInput').click();
@@ -3671,20 +4899,26 @@ function bindChrome() {
   $('#btnDemo').addEventListener('click', loadDemoProject);
   $('#btnEmptyDemo').addEventListener('click', loadDemoProject);
 
-  /* global drag & drop */
+  /* drag & drop: a .postcard file restores a project; one photo dropped on
+     the card replaces its picture; anything else becomes new cards */
   let dragDepth = 0;
-  window.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; $('#dropzone').classList.add('dragover'); });
-  window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dropzone').classList.remove('dragover'); } });
-  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragenter', (e) => { if (![...e.dataTransfer.types].includes('Files')) return; e.preventDefault(); dragDepth++; $('#dropzone').classList.add('dragover'); $('#previewArea').classList.add('dragover'); });
+  window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dropzone').classList.remove('dragover'); $('#previewArea').classList.remove('dragover'); } });
+  window.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
   window.addEventListener('drop', (e) => {
-    e.preventDefault();
+    const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
     dragDepth = 0;
-    $('#dropzone').classList.remove('dragover');
-    const files = [...(e.dataTransfer.files || [])];
+    $('#dropzone').classList.remove('dragover'); $('#previewArea').classList.remove('dragover');
     if (!files.length) return;
-    /* a dropped .postcard / JSON archive restores the whole project */
+    e.preventDefault();
     const project = files.find(f => /\.postcard$/i.test(f.name) || /\.json$/i.test(f.name) || f.type === 'application/json');
     if (project) { restoreProjectFile(project); return; }
+    const imgs = files.filter(f => f.type.startsWith('image/'));
+    if (imgs.length === 1 && currentCard()) {
+      const rect = viewport.getBoundingClientRect();
+      const hit = toCardCoords(e.clientX - rect.left, e.clientY - rect.top);
+      if (hit && hit.item.side === 'front') { replacePhoto(imgs[0]); return; }
+    }
     handleFiles(files);
   });
 
@@ -3709,8 +4943,9 @@ function bindChrome() {
   $('#dupA4').addEventListener('click', () => { duplex.sheet = 'a4'; dupSync(); });
   $('#dupLetter').addEventListener('click', () => { duplex.sheet = 'letter'; dupSync(); });
   $('#dupGuides').addEventListener('change', (e) => { duplex.guides = e.target.checked; renderDuplexPreview(); });
-  $('#btnTestPrint').addEventListener('click', () => printCanvases(alignmentTestCanvases(duplex.sheet, duplex.edge)));
+  $('#btnTestPrint').addEventListener('click', () => printCanvases(alignmentTestCanvases(duplex.sheet, duplex.edge), 200, duplex.sheet === 'letter' ? 'letter' : 'A4'));
   $('#btnDuplexPrint').addEventListener('click', async () => {
+    await ensureFonts();
     const opts = { bleed: state.bleedOn, marks: state.marksOn, edge: duplex.edge, export: true };
     const L = sheetLayout(duplex.sheet, opts);
     const canvases = [];
@@ -3720,42 +4955,29 @@ function bindChrome() {
       canvases.push(renderSheet(batch, duplex.sheet, 'back', 200, opts));
     }
     $('#dlgDuplex').close();
-    await printCanvases(canvases);
+    await printCanvases(canvases, 200, duplex.sheet === 'letter' ? 'letter' : 'A4');
   });
-
-  /* mobile panels */
-  $('#btnMobilePanel').addEventListener('click', () => openMobilePanel('inspector'));
-  $('#btnInspClose').addEventListener('click', closeMobilePanels);
-  $('#panelScrim').addEventListener('click', closeMobilePanels);
-
-  /* floating media button on phones */
-  if (window.matchMedia('(max-width: 900px)').matches) {
-    const b = document.createElement('button');
-    b.className = 'icon-btn glass mobile-media-btn';
-    b.setAttribute('aria-label', 'Open photo browser');
-    b.innerHTML = '<svg viewBox="0 0 20 20" width="19" height="19"><rect x="2.5" y="4.5" width="15" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="8.5" r="1.4" fill="currentColor"/><path d="m5 13 3.5-3.5 2.5 2.5 2-2 2.5 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    b.addEventListener('click', () => openMobilePanel('media'));
-    $('#previewArea').appendChild(b);
-  }
 
   /* keyboard shortcuts */
   const nudgeCommit = debounce(commit, 500);
   window.addEventListener('keydown', (e) => {
-    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z' && !typing) {
       e.preventDefault();
       e.shiftKey ? redo() : undo();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      $('#btnSaveProject').click();
-      return;
+    if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
+    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); $('#btnSaveProject').click(); return; }
+    if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); runPrint(); return; }
+    if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); openExport(); return; }
+    if (typing || document.querySelector('dialog[open]')) return;
+    if (mod && e.key.toLowerCase() === 'd' && selectedEl) { e.preventDefault(); duplicateSelected(); return; }
+    if (e.key === 'Enter') {
+      if (selectedEl && isTextual(selectedEl)) { e.preventDefault(); startInlineEdit({ el: selectedEl }); return; }
+      if (frontSel && frontSel !== 'photo') { e.preventDefault(); startInlineEdit({ front: frontSel }); return; }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); runPrint(); return; }
-    if (typing) return;
-    /* arrow keys nudge the selected back element */
     if (selectedEl && e.key.startsWith('Arrow')) {
       e.preventDefault();
       const step = e.shiftKey ? 0.02 : 0.004;
@@ -3767,6 +4989,7 @@ function bindChrome() {
       view.needsRender = true;
       return;
     }
+    if (mod) return;
     switch (e.key) {
       case '1': zoomActual(); break;
       case '0': zoomFit(); break;
@@ -3779,45 +5002,33 @@ function bindChrome() {
       case 'ArrowLeft': if (state.cards.length) selectCard(state.sel - 1); break;
       case 'ArrowRight': if (state.cards.length) selectCard(state.sel + 1); break;
       case 'Delete': case 'Backspace':
-        if (selectedEl) $('#elHide').click();
+        if (selectedEl) { e.preventDefault(); $('#elHide').click(); }
         break;
       case 'Escape':
-        if (selectedEl) { selectedEl = null; syncElEditor(); requestRender(); }
+        if (selectedEl || frontSel) { selectedEl = null; frontSel = null; syncElEditor(); view.needsRender = true; }
         else if ($('#app').classList.contains('fullscreen-preview')) $('#btnFullscreen').click();
+        else if (isNarrow()) closeSheets();
         break;
     }
   });
 
-  /* re-fit on resize / rotation */
-  const ro = new ResizeObserver(() => { if (view.fitMode) { view.panX = 0; view.panY = 0; } view.needsRender = true; });
-  ro.observe(viewport);
-  window.addEventListener('orientationchange', () => setTimeout(() => { zoomFit(); }, 250));
-}
-
-function openInspPage(page) {
-  $$('.insp-tab').forEach(t => {
-    const on = t.dataset.page === page;
-    t.classList.toggle('active', on);
-    t.setAttribute('aria-selected', on);
+  /* re-fit on resize / rotation; move between desktop and phone layouts */
+  let wasNarrow = isNarrow();
+  const ro = new ResizeObserver(() => {
+    if (view.fitMode) { view.panX = 0; view.panY = 0; }
+    view.needsRender = true;
+    const n = isNarrow();
+    if (n !== wasNarrow) {
+      wasNarrow = n;
+      closeSheets();
+      if (!n) showPanel(activePanel === 'edit' ? 'templates' : activePanel);
+    }
   });
-  $$('.insp-page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
-}
-
-function openMobilePanel(which) {
-  closeMobilePanels();
-  if (which === 'media') $('#mediaPanel').classList.add('open');
-  else $('#inspector').classList.add('open');
-  $('#panelScrim').hidden = false;
-}
-function closeMobilePanels() {
-  $('#mediaPanel').classList.remove('open');
-  $('#inspector').classList.remove('open');
-  $('#panelScrim').hidden = true;
+  ro.observe(viewport);
 }
 
 /* ═══════════════════ Init ═══════════════════ */
 async function init() {
-  /* theme: saved → system preference */
   let theme = null;
   try { theme = localStorage.getItem('postcard-press-theme'); } catch {}
   if (!theme) theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -3828,25 +5039,31 @@ async function init() {
   bindFrontInputs();
   bindBackInputs();
   bindExportInputs();
+  bindInlineEditor();
 
-  /* restore autosaved work */
   try {
-    const saved = await idbGet('autosave');
-    if (saved && saved.state && saved.state.cards && saved.state.cards.length) {
-      await loadProjectData(saved);
-      toast('Welcome back — your project was restored.');
-    }
+    if (await loadAutosave()) toast('Picked up where you left off.');
   } catch (e) { console.warn('Autosave restore skipped:', e); }
 
   if (!history.stack.length) { history.stack = [snapshot()]; history.idx = 0; }
   updateUndoButtons();
   syncAllInputs();
+  syncSideUi();
   renderTimeline();
   renderMediaList();
+  if (!isNarrow()) showPanel('templates'); else setRailActive(null);
   zoomFit();
   previewLoop();
 
-  /* offline support */
+  /* fetch the bundled card fonts after the page has settled, then redraw
+     anything that was drawn with a fallback face */
+  const warmFonts = () => ensureFonts().then(() => { thumbCache.clear(); renderTimeline(); renderTemplates(true); view.needsRender = true; });
+  if (state.cards.length) warmFonts();
+  else {
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+    window.addEventListener('load', () => idle(warmFonts, { timeout: 4000 }), { once: true });
+  }
+
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('service-worker.js').catch(() => {});
   }
@@ -3864,4 +5081,9 @@ window.PostcardPress = {
   ensurePostmark, postmarkElement, stampElement, restoreProjectFile,
   adjustFilter, adjustTint, CROP_ASPECTS, ADJUST_MODES,
   FRONT_PRESETS, BACK_PRESETS, applyFrontPreset, applyBackPreset, frontStyle, defaultBack, normalizeCard,
+  ensureFonts, loadQrLib, addToBack, replacePhoto, deleteCard, undo, redo, startInlineEdit, finishInlineEdit,
+  renderTemplates, showPanel, referencedImageIds, view, bindTextReal,
+  get selectedEl() { return selectedEl; }, set selectedEl(v) { selectedEl = v; },
+  get frontSel() { return frontSel; },
+  printCanvasesForTest: (c) => printCanvases([c], 200, null),
 };

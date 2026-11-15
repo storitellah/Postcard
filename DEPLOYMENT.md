@@ -6,7 +6,7 @@ Postcard Press is a **plain static site** — no build step, no server code, no 
 
 ```
 index.html  styles.css  script.js
-manifest.json  service-worker.js  favicon.svg  icons/
+manifest.json  service-worker.js  favicon.svg  icons/  fonts/  vendor/
 ```
 
 (`samples/` and the Markdown docs are optional.)
@@ -47,7 +47,7 @@ Drag-and-drop the folder, or point the host at the repo with **no build command*
 
 - **HTTPS is required** for the service worker / installable PWA (localhost is exempt).
 - Set long cache headers for `icons/` and let `index.html` revalidate; the service worker versions its own cache (`postcard-press-v…` in `service-worker.js` — bump it when deploying changes).
-- No analytics, fonts or CDNs are fetched: the app makes **zero third-party requests**, so no cookie banner is needed.
+- No analytics or CDNs: the two typefaces in `fonts/` are self-hosted, so the app makes **zero third-party requests** and needs no cookie banner.
 
 ## Updating
 
