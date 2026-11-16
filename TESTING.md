@@ -2,6 +2,28 @@
 
 Postcard Press is verified two ways: an automated headless-browser suite run against the real app, and a manual checklist.
 
+## Automated test report — v2.0.0 (redesign, on-card editing, new layouts)
+
+Run: 2026-11-15 · Chromium (Playwright, headless) · desktop 1440×900 and iPhone 13 emulation
+
+`test/features.wysiwyg.test.js` drives the real UI with mouse and touch input:
+
+- Layout gallery renders all 15 front layouts as live previews of the current card, and a click applies one
+- Double-click on card text opens the on-card editor; typing updates the card (front title, back heading)
+- Dragging a back element snaps to the card centre; Ctrl+D duplicates it
+- All 11 back layouts and all 15 front layouts render for print
+- Phone: tab bar, bottom sheets keep the card visible, tapping a tab again closes it, swipe flips the card, no horizontal overflow
+- Autosave restores cards and photos after a reload
+- Regression checks for the bugs fixed in 2.0 (diptych control, swipe, undo-after-delete, photo drag clamp, placeholder text in exports, empty QR box, contact-sheet pagination, true-size printing)
+
+**Results:** v2.0 redesign **27/27**, EXIF/QR **15/15** (now also checks the libraries load lazily), presets **11/11**, print/postmark/tone **11/11**, core pipeline **8/8** — **72/72, no console errors.**
+
+Run them with the Playwright that is installed globally (or `npm i playwright`):
+
+```bash
+for f in test/*.test.js; do node "$f"; done
+```
+
 ## Automated test report — v1.4.0 (expanded preset & template engine)
 
 Run: 2026-08-18 · Chromium (Playwright, headless) · viewport 1440×900

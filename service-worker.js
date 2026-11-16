@@ -1,11 +1,15 @@
-/* Postcard Press — offline-first service worker.
-   Cache-first for the app shell; the app itself never talks to a network. */
-const CACHE = 'postcard-press-v1.4.0';
+/* Postcard Press — offline service worker.
+   The page itself is fetched network-first (so a new release shows up on the
+   next visit); everything else is cache-first. The app never uploads anything. */
+const CACHE = 'postcard-press-v2.0.0';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './script.js',
+  './fonts/instrument-serif.woff2',
+  './fonts/instrument-serif-italic.woff2',
+  './fonts/anton.woff2',
   './vendor/exifr.lite.umd.js',
   './vendor/qrcode.bundle.js',
   './manifest.json',
@@ -18,9 +22,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -32,17 +34,27 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then((hit) => {
-      if (hit) return hit;
-      return fetch(event.request).then((res) => {
-        if (res.ok && new URL(event.request.url).origin === location.origin) {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-        }
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
+
+  /* pages: try the network first, fall back to the cached copy offline */
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); }
         return res;
-      }).catch(() => caches.match('./index.html'));
-    })
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  /* assets: cache first, then network (and remember it) */
+  event.respondWith(
+    caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
+      return res;
+    }))
   );
 });

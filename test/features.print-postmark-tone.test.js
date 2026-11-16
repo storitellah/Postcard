@@ -1,4 +1,4 @@
-const { chromium } = require('playwright-core');
+const { chromium } = require('playwright');
 const http=require('http'),fs=require('fs'),path=require('path');
 const ROOT='/home/user/Postcard', SAMPLES=path.join(ROOT,'samples');
 const MIME={'.html':'text/html','.css':'text/css','.js':'text/javascript','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
@@ -6,7 +6,7 @@ const server=http.createServer((req,res)=>{let p=path.join(ROOT,decodeURICompone
 const results=[]; const ok=(n,p,x='')=>{results.push({n,p});console.log((p?'PASS':'FAIL')+'  '+n+(x?'  — '+x:''));};
 (async()=>{
   await new Promise(r=>server.listen(8899,r));
-  const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+  const b=await chromium.launch({args:['--no-sandbox']});
   const page=await b.newPage({viewport:{width:1440,height:900}});
   const errors=[]; page.on('console',m=>{if(m.type()==='error')errors.push(m.text());}); page.on('pageerror',e=>errors.push(String(e)));
   await page.goto('http://localhost:8899/index.html'); await page.waitForTimeout(500);
